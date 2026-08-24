@@ -220,12 +220,18 @@ def get_qwen_reply(chat_history, document_context):
 if "chats" not in st.session_state:
     st.session_state.chats = load_history()
 
+if not st.session_state.chats:
+    st.session_state.chats = {"Chat 1": []}
+
 if "current_chat" not in st.session_state:
     st.session_state.current_chat = "Chat 1"
 
 if st.session_state.current_chat not in st.session_state.chats:
-    st.session_state.chats[st.session_state.current_chat] = []
-    st.session_state.messages = st.session_state.chats[
+    st.session_state.current_chat = next(
+        iter(st.session_state.chats)
+    )
+
+st.session_state.messages = st.session_state.chats[
     st.session_state.current_chat
 ]
 
