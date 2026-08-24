@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 HISTORY_FILE = Path("chat_history.json")
 DOCUMENTS_DIR = Path("documents")
-
+DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 st.set_page_config(
     page_title="My AI",
     page_icon="🤖",
