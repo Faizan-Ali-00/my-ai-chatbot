@@ -1,0 +1,6 @@
+streamlit
+pypdf
+python-docx
+sentence-transformers
+transformers
+torch
