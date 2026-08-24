@@ -1,0 +1,21 @@
+# Virtual environment
+chatbotenv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Streamlit
+.streamlit/
+
+# Local chat history
+chat_history.json
+
+# OS files
+.DS_Store
+Thumbs.db
