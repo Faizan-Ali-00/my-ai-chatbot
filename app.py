@@ -2,11 +2,10 @@ import streamlit as st
 from huggingface_hub import InferenceClient
 from pathlib import Path
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer, util
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -17,7 +16,7 @@ st.set_page_config(
 
 
 # ============================================================
-# SECRETS
+# HUGGING FACE TOKEN
 # ============================================================
 
 try:
@@ -26,11 +25,8 @@ except Exception:
     HF_TOKEN = None
 
 if not HF_TOKEN:
-    st.error(
-        "Hugging Face token not found.\n\n"
-        "Go to Streamlit Cloud → Settings → Secrets "
-        "and add HF_TOKEN."
-    )
+    st.error("Hugging Face token not found.")
+    st.info("Go to Streamlit Cloud → Manage app → Settings → Secrets")
     st.stop()
 
 
@@ -38,18 +34,7 @@ if not HF_TOKEN:
 # MODEL
 # ============================================================
 
-# You can change this later from Streamlit Secrets
-# without changing this Python file.
-
-try:
-    MODEL_NAME = st.secrets["MODEL_NAME"]
-except Exception:
-    MODEL_NAME = "google/gemma-3-1b-it"
-
-
-# ============================================================
-# DIRECTORIES
-# ============================================================
+MODEL_NAME = "google/gemma-2-2b-it"
 
 DOCUMENTS_DIR = Path("documents")
 DOCUMENTS_DIR.mkdir(exist_ok=True)
@@ -63,7 +48,7 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 def get_client():
 
     return InferenceClient(
-        provider="auto",
+        provider="hf-inference",
         api_key=HF_TOKEN
     )
 
@@ -72,22 +57,7 @@ client = get_client()
 
 
 # ============================================================
-# EMBEDDING MODEL
-# ============================================================
-
-@st.cache_resource
-def get_embedding_model():
-
-    return SentenceTransformer(
-        "sentence-transformers/all-MiniLM-L6-v2"
-    )
-
-
-embedding_model = get_embedding_model()
-
-
-# ============================================================
-# TITLE
+# PAGE
 # ============================================================
 
 st.title("🤖 My AI Chatbot")
@@ -152,7 +122,7 @@ def extract_pdf_text(file_path):
 
 
 # ============================================================
-# LOAD PDF DOCUMENTS
+# LOAD DOCUMENTS
 # ============================================================
 
 def load_documents():
@@ -165,18 +135,16 @@ def load_documents():
 
         if text.strip():
 
-            documents.append(
-                {
-                    "name": file.name,
-                    "text": text
-                }
-            )
+            documents.append({
+                "name": file.name,
+                "text": text
+            })
 
     return documents
 
 
 # ============================================================
-# FIND RELEVANT DOCUMENT CONTEXT
+# FIND RELEVANT DOCUMENT TEXT
 # ============================================================
 
 def find_relevant_context(question):
@@ -187,52 +155,40 @@ def find_relevant_context(question):
 
         return ""
 
-    texts = [
-        document["text"]
-        for document in documents
-    ]
+    question_words = set(
+        question.lower().split()
+    )
 
-    try:
+    best_document = None
+    best_score = 0
 
-        question_embedding = embedding_model.encode(
-            question,
-            convert_to_tensor=True
+    for document in documents:
+
+        document_words = set(
+            document["text"].lower().split()
         )
 
-        document_embeddings = embedding_model.encode(
-            texts,
-            convert_to_tensor=True
+        score = len(
+            question_words.intersection(document_words)
         )
 
-        scores = util.cos_sim(
-            question_embedding,
-            document_embeddings
-        )[0]
+        if score > best_score:
 
-        best_indices = scores.argsort(
-            descending=True
-        )[:2]
+            best_score = score
+            best_document = document
 
-        context = ""
-
-        for index in best_indices:
-
-            index = int(index)
-
-            context += (
-                f"\nDocument: {documents[index]['name']}\n"
-                f"{documents[index]['text'][:4000]}\n"
-            )
-
-        return context
-
-    except Exception:
+    if best_document is None:
 
         return ""
 
+    return (
+        f"Document: {best_document['name']}\n"
+        f"{best_document['text'][:5000]}"
+    )
+
 
 # ============================================================
-# DISPLAY PREVIOUS MESSAGES
+# DISPLAY OLD CHAT
 # ============================================================
 
 for message in st.session_state.messages:
@@ -246,27 +202,19 @@ for message in st.session_state.messages:
 # CHAT INPUT
 # ============================================================
 
-prompt = st.chat_input(
-    "Ask me anything..."
-)
+prompt = st.chat_input("Ask me anything...")
 
-
-# ============================================================
-# PROCESS QUESTION
-# ============================================================
 
 if prompt:
 
     # --------------------------------------------------------
-    # SHOW USER MESSAGE
+    # USER MESSAGE
     # --------------------------------------------------------
 
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": prompt
-        }
-    )
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
     with st.chat_message("user"):
 
@@ -283,42 +231,37 @@ if prompt:
 
             try:
 
-                # Keep only recent messages.
-                # This reduces unnecessary input.
+                # Only keep recent conversation.
+                # This makes requests smaller and faster.
                 recent_messages = (
                     st.session_state.messages[-6:]
                 )
 
 
-                # ------------------------------------------------
-                # DOCUMENT SEARCH
-                # ------------------------------------------------
-
+                # Get document context
                 context = find_relevant_context(prompt)
 
 
                 # ------------------------------------------------
-                # SYSTEM INSTRUCTION
+                # SYSTEM PROMPT
                 # ------------------------------------------------
 
                 system_prompt = """
 You are a helpful AI assistant.
 
-Answer the user's question clearly and directly.
-
-For simple questions, give a simple answer.
-
-For complex questions, explain the important points.
+Give clear, direct and useful answers.
 
 Do not unnecessarily repeat the user's question.
 
-If relevant document information is provided,
-use that information in your answer.
+Keep simple questions short.
 
-Do not invent facts from documents.
+For more complicated questions, explain step by step.
 
-If the requested information cannot be found
-in the provided documents, say so clearly.
+If document information is provided, use it when relevant.
+
+Never invent information from the document.
+
+If you do not know something, say that you do not know.
 """
 
 
@@ -333,21 +276,23 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # BUILD MESSAGE LIST
+                # BUILD MESSAGES
                 # ------------------------------------------------
 
                 messages = [
+
                     {
                         "role": "system",
                         "content": system_prompt
                     }
+
                 ]
 
                 messages.extend(recent_messages)
 
 
                 # ------------------------------------------------
-                # CALL HUGGING FACE
+                # CALL MODEL
                 # ------------------------------------------------
 
                 response = client.chat_completion(
@@ -356,9 +301,10 @@ Relevant document information:
 
                     messages=messages,
 
-                    max_tokens=500,
+                    max_tokens=200,
 
                     temperature=0.7
+
                 )
 
 
@@ -374,7 +320,7 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # DISPLAY ANSWER
+                # SHOW ANSWER
                 # ------------------------------------------------
 
                 st.markdown(answer)
@@ -384,12 +330,13 @@ Relevant document information:
                 # SAVE ANSWER
                 # ------------------------------------------------
 
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
-                )
+                st.session_state.messages.append({
+
+                    "role": "assistant",
+
+                    "content": answer
+
+                })
 
 
             except Exception as e:
@@ -398,6 +345,4 @@ Relevant document information:
                     "The AI could not generate a response."
                 )
 
-                st.code(
-                    str(e)
-                )
+                st.code(str(e))
