@@ -299,7 +299,7 @@ Relevant document information:
 
                     messages=messages,
 
-                    max_tokens=1000,
+                    max_tokens=7000,
 
                     temperature=0.7
                 )
