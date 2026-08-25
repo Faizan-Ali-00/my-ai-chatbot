@@ -26,7 +26,7 @@ except Exception:
 
 if not HF_TOKEN:
     st.error("Hugging Face token not found.")
-    st.info("Go to Streamlit Cloud → Manage app → Settings → Secrets")
+    st.info("Go to Manage app → Settings → Secrets and add HF_TOKEN.")
     st.stop()
 
 
@@ -48,7 +48,6 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 def get_client():
 
     return InferenceClient(
-        provider="hf-inference",
         api_key=HF_TOKEN
     )
 
@@ -75,7 +74,8 @@ with st.sidebar:
 
     st.header("⚙️ Settings")
 
-    st.write("Model:")
+    st.write("Model")
+
     st.code(MODEL_NAME)
 
     if st.button("🗑️ Clear Chat"):
@@ -95,7 +95,7 @@ if "messages" not in st.session_state:
 
 
 # ============================================================
-# PDF TEXT EXTRACTION
+# PDF READER
 # ============================================================
 
 def extract_pdf_text(file_path):
@@ -122,7 +122,7 @@ def extract_pdf_text(file_path):
 
 
 # ============================================================
-# LOAD DOCUMENTS
+# LOAD PDF DOCUMENTS
 # ============================================================
 
 def load_documents():
@@ -144,7 +144,7 @@ def load_documents():
 
 
 # ============================================================
-# FIND RELEVANT DOCUMENT TEXT
+# FIND DOCUMENT CONTEXT
 # ============================================================
 
 def find_relevant_context(question):
@@ -182,13 +182,13 @@ def find_relevant_context(question):
         return ""
 
     return (
-        f"Document: {best_document['name']}\n"
+        f"Document: {best_document['name']}\n\n"
         f"{best_document['text'][:5000]}"
     )
 
 
 # ============================================================
-# DISPLAY OLD CHAT
+# DISPLAY CHAT HISTORY
 # ============================================================
 
 for message in st.session_state.messages:
@@ -207,9 +207,9 @@ prompt = st.chat_input("Ask me anything...")
 
 if prompt:
 
-    # --------------------------------------------------------
+    # ========================================================
     # USER MESSAGE
-    # --------------------------------------------------------
+    # ========================================================
 
     st.session_state.messages.append({
         "role": "user",
@@ -221,9 +221,9 @@ if prompt:
         st.markdown(prompt)
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # AI RESPONSE
-    # --------------------------------------------------------
+    # ========================================================
 
     with st.chat_message("assistant"):
 
@@ -231,37 +231,36 @@ if prompt:
 
             try:
 
-                # Only keep recent conversation.
-                # This makes requests smaller and faster.
+                # Keep only recent messages
                 recent_messages = (
                     st.session_state.messages[-6:]
                 )
 
 
-                # Get document context
+                # Get PDF information
                 context = find_relevant_context(prompt)
 
 
-                # ------------------------------------------------
+                # =================================================
                 # SYSTEM PROMPT
-                # ------------------------------------------------
+                # =================================================
 
                 system_prompt = """
 You are a helpful AI assistant.
 
-Give clear, direct and useful answers.
+Answer clearly and directly.
+
+For simple questions, give a concise answer.
+
+For complicated questions, explain step by step.
 
 Do not unnecessarily repeat the user's question.
 
-Keep simple questions short.
-
-For more complicated questions, explain step by step.
-
 If document information is provided, use it when relevant.
 
-Never invent information from the document.
+Do not invent information from documents.
 
-If you do not know something, say that you do not know.
+If you don't know something, say so.
 """
 
 
@@ -275,9 +274,9 @@ Relevant document information:
 """
 
 
-                # ------------------------------------------------
-                # BUILD MESSAGES
-                # ------------------------------------------------
+                # =================================================
+                # CREATE MESSAGES
+                # =================================================
 
                 messages = [
 
@@ -291,9 +290,9 @@ Relevant document information:
                 messages.extend(recent_messages)
 
 
-                # ------------------------------------------------
-                # CALL MODEL
-                # ------------------------------------------------
+                # =================================================
+                # CALL HUGGING FACE
+                # =================================================
 
                 response = client.chat_completion(
 
@@ -308,9 +307,9 @@ Relevant document information:
                 )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # GET ANSWER
-                # ------------------------------------------------
+                # =================================================
 
                 answer = (
                     response.choices[0]
@@ -319,16 +318,16 @@ Relevant document information:
                 )
 
 
-                # ------------------------------------------------
-                # SHOW ANSWER
-                # ------------------------------------------------
+                # =================================================
+                # DISPLAY ANSWER
+                # =================================================
 
                 st.markdown(answer)
 
 
-                # ------------------------------------------------
+                # =================================================
                 # SAVE ANSWER
-                # ------------------------------------------------
+                # =================================================
 
                 st.session_state.messages.append({
 
