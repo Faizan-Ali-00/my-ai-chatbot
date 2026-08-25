@@ -1,355 +1,289 @@
-from docx import Document
-import json
-from pathlib import Path
-
+import os
 import streamlit as st
+from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
+from pathlib import Path
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer, util
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
-HISTORY_FILE = Path("chat_history.json")
-DOCUMENTS_DIR = Path("documents")
-DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 st.set_page_config(
-    page_title="My AI",
+    page_title="My AI Chatbot",
     page_icon="🤖",
-    layout="wide",
+    layout="centered"
 )
 
-def load_history():
-    if HISTORY_FILE.exists():
-        try:
-            return json.loads(
-                HISTORY_FILE.read_text(encoding="utf-8")
-            )
-        except json.JSONDecodeError:
-            return {}
+load_dotenv()
 
-    return {}
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-def save_history(chats):
-    HISTORY_FILE.write_text(
-        json.dumps(
-            chats,
-            ensure_ascii=False,
-            indent=2
-        ),
-        encoding="utf-8",
+if not HF_TOKEN:
+    st.error("Hugging Face token not found.")
+    st.stop()
+
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
+
+DOCUMENTS_DIR = Path("documents")
+HISTORY_FILE = Path("chat_history.json")
+
+DOCUMENTS_DIR.mkdir(exist_ok=True)
+
+
+# ============================================================
+# HUGGING FACE CLIENT
+# ============================================================
+
+@st.cache_resource
+def get_client():
+    return InferenceClient(
+        provider="hf-inference",
+        api_key=HF_TOKEN
     )
-def read_document(file_path):
+
+
+client = get_client()
+
+
+# ============================================================
+# EMBEDDING MODEL
+# ============================================================
+
+@st.cache_resource
+def get_embedding_model():
+    return SentenceTransformer(
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+
+
+embedding_model = get_embedding_model()
+
+
+# ============================================================
+# PAGE TITLE
+# ============================================================
+
+st.title("🤖 My AI Chatbot")
+
+st.caption(
+    "Ask questions, upload documents, and chat with your AI assistant."
+)
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+
+# ============================================================
+# PDF FUNCTIONS
+# ============================================================
+
+def extract_pdf_text(file_path):
+    text = ""
+
     try:
-        # TXT files
-        if file_path.suffix.lower() == ".txt":
-            return file_path.read_text(
-                encoding="utf-8",
-                errors="ignore"
-            )
+        reader = PdfReader(file_path)
 
-        # DOCX files
-        if file_path.suffix.lower() == ".docx":
-            doc = Document(file_path)
+        for page in reader.pages:
+            page_text = page.extract_text()
 
-            text = []
+            if page_text:
+                text += page_text + "\n"
 
-            for paragraph in doc.paragraphs:
-                if paragraph.text.strip():
-                    text.append(paragraph.text)
-
-            return "\n".join(text)
-
-        # PDF files
-        if file_path.suffix.lower() == ".pdf":
-            reader = PdfReader(file_path)
-
-            text = []
-
-            for page in reader.pages:
-                page_text = page.extract_text()
-
-                if page_text:
-                    text.append(page_text)
-
-            return "\n".join(text)
-
-        # Unsupported file type
+    except Exception:
         return ""
 
-    except Exception as e:
-        print(f"Error reading {file_path.name}: {e}")
+    return text
+
+
+def load_documents():
+
+    documents = []
+
+    for file in DOCUMENTS_DIR.glob("*.pdf"):
+
+        text = extract_pdf_text(file)
+
+        if text.strip():
+            documents.append({
+                "name": file.name,
+                "text": text
+            })
+
+    return documents
+
+
+def find_relevant_context(question):
+
+    documents = load_documents()
+
+    if not documents:
         return ""
 
-def split_text(text, chunk_size=700, overlap=100):
-    chunks = []
-    start = 0
+    texts = [doc["text"] for doc in documents]
 
-    while start < len(text):
-        chunk = text[start:start + chunk_size].strip()
-
-        if chunk:
-            chunks.append(chunk)
-
-        start += chunk_size - overlap
-
-    return chunks
-
-@st.cache_resource(show_spinner=False)
-def load_document_index():
-    document_chunks = []
-
-    if not DOCUMENTS_DIR.exists():
-        return None, [], None
-
-    for file_path in DOCUMENTS_DIR.iterdir():
-        if file_path.suffix.lower() not in {".pdf", ".txt",".docx"}:
-            continue
-
-        text = read_document(file_path)
-
-        for chunk in split_text(text):
-            document_chunks.append(
-                {
-                    "source": file_path.name,
-                    "text": chunk,
-                }
-            )
-
-    if not document_chunks:
-        return None, [], None
-
-    embedder = SentenceTransformer("all-MiniLM-L6-v2")
-    embeddings = embedder.encode(
-        [chunk["text"] for chunk in document_chunks],
-        convert_to_tensor=True,
-        normalize_embeddings=True,
-    )
-
-    return embedder, document_chunks, embeddings
-
-def search_documents(question):
-    embedder, document_chunks, embeddings = load_document_index()
-
-    if not document_chunks:
-        return "", []
-
-    question_embedding = embedder.encode(
+    question_embedding = embedding_model.encode(
         question,
-        convert_to_tensor=True,
-        normalize_embeddings=True,
+        convert_to_tensor=True
     )
 
-    matches = util.semantic_search(
+    document_embeddings = embedding_model.encode(
+        texts,
+        convert_to_tensor=True
+    )
+
+    scores = util.cos_sim(
         question_embedding,
-        embeddings,
-        top_k=min(3, len(document_chunks)),
+        document_embeddings
     )[0]
 
-    selected_chunks = []
-    sources = []
+    best_indices = scores.argsort(
+        descending=True
+    )[:2]
 
-    for match in matches:
-        if match["score"] >= 0.35:
-            item = document_chunks[match["corpus_id"]]
-            selected_chunks.append(
-                f"Source: {item['source']}\n{item['text']}"
-            )
+    context = ""
 
-            if item["source"] not in sources:
-                sources.append(item["source"])
+    for index in best_indices:
 
-    return "\n\n---\n\n".join(selected_chunks), sources
+        index = int(index)
 
-@st.cache_resource(show_spinner=False)
-def load_qwen():
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype="auto",
-        device_map="cpu",
-    )
-    model.eval()
-    return tokenizer, model
-
-def get_qwen_reply(chat_history, document_context):
-    tokenizer, model = load_qwen()
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a helpful, friendly personal AI assistant. "
-                "When document context is provided, use it carefully. "
-                "If the answer is not in the document context, say so clearly."
-            ),
-        },
-    ]
-
-    if document_context:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"DOCUMENT CONTEXT:\n{document_context}",
-            }
+        context += (
+            f"\nDocument: {documents[index]['name']}\n"
+            f"{documents[index]['text'][:4000]}\n"
         )
 
-    messages.extend(chat_history[-12:])
+    return context
 
-    prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
 
-    model_inputs = tokenizer(
-        [prompt],
-        return_tensors="pt",
-    ).to(model.device)
-
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=250,
-    )
-
-    new_tokens = generated_ids[:, model_inputs.input_ids.shape[1]:]
-
-    return tokenizer.batch_decode(
-        new_tokens,
-        skip_special_tokens=True,
-    )[0]
-
-if "chats" not in st.session_state:
-    st.session_state.chats = load_history()
-
-if not st.session_state.chats:
-    st.session_state.chats = {"Chat 1": []}
-
-if "current_chat" not in st.session_state:
-    st.session_state.current_chat = "Chat 1"
-
-if st.session_state.current_chat not in st.session_state.chats:
-    st.session_state.current_chat = next(
-        iter(st.session_state.chats)
-    )
-
-st.session_state.messages = st.session_state.chats[
-    st.session_state.current_chat
-]
-
-with st.sidebar:
-    st.header("My AI")
-
-    if st.button("＋ New Chat", use_container_width=True):
-        new_chat_number = len(st.session_state.chats) + 1
-        new_chat_name = f"Chat {new_chat_number}"
-
-        st.session_state.chats[new_chat_name] = []
-        st.session_state.current_chat = new_chat_name
-        st.session_state.messages = st.session_state.chats[new_chat_name]
-
-        save_history(st.session_state.chats)
-        st.rerun()
-
-    st.divider()
-
-    st.subheader("💬 Chats")
-
-    for chat_name in st.session_state.chats:
-        if st.button(chat_name, use_container_width=True):
-            st.session_state.current_chat = chat_name
-            st.session_state.messages = st.session_state.chats[chat_name]
-            st.rerun()
-
-    st.divider()
-
-    st.subheader("📄 Documents")
-
-    uploaded_file = st.file_uploader(
-        "Upload a document",
-        type=["pdf", "txt", "docx"],
-        key="document_uploader"
-    )
-
-    if uploaded_file is not None:
-        save_path = DOCUMENTS_DIR / uploaded_file.name
-        save_path.write_bytes(uploaded_file.getbuffer())
-
-        load_document_index.clear()
-
-        st.success(f"Uploaded: {uploaded_file.name}")
-
-    document_count = 0
-
-    if DOCUMENTS_DIR.exists():
-        document_count = len([
-            file_path
-            for file_path in DOCUMENTS_DIR.iterdir()
-            if file_path.suffix.lower() in {".pdf", ".txt", ".docx"}
-        ])
-
-    st.info(f"📚 {document_count} documents ready")
-
-    if st.button("🔄 Reload documents", use_container_width=True):
-        load_document_index.clear()
-        st.rerun()
-st.caption("Your personal AI assistant")
-st.divider()
-if not st.session_state.messages:
-    st.markdown(
-        """
-        ### 👋 How can I help you?
-
-        Ask me anything, or upload a document and ask questions about its contents.
-
-        **You can upload:**
-        - 📄 PDF
-        - 📝 TXT
-        - 📘 DOCX
-        """
-    )
+# ============================================================
+# DISPLAY CHAT HISTORY
+# ============================================================
 
 for message in st.session_state.messages:
+
     with st.chat_message(message["role"]):
-        st.write(message["content"])
+        st.markdown(message["content"])
 
-        if message.get("sources"):
-            st.caption("Sources: " + ", ".join(message["sources"]))
 
-user_message = st.chat_input("Message My AI...")
+# ============================================================
+# CHAT INPUT
+# ============================================================
 
-if user_message:
-    st.session_state.messages.append(
-        {"role": "user", "content": user_message}
-    )
-    st.session_state.chats[st.session_state.current_chat] = (
-    st.session_state.messages
+prompt = st.chat_input(
+    "Ask me anything..."
 )
+
+
+if prompt:
+
+    # --------------------------------------------------------
+    # USER MESSAGE
+    # --------------------------------------------------------
+
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
     with st.chat_message("user"):
-        st.write(user_message)
+        st.markdown(prompt)
+
+
+    # --------------------------------------------------------
+    # AI RESPONSE
+    # --------------------------------------------------------
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching documents and preparing a response..."):
-            document_context, sources = search_documents(user_message)
-            reply = get_qwen_reply(
-                st.session_state.messages,
-                document_context,
-            )
 
-        st.write(reply)
+        with st.spinner("Thinking..."):
 
-        if sources:
-            st.caption("Sources: " + ", ".join(sources))
+            try:
 
-    assistant_message = {
-        "role": "assistant",
-        "content": reply,
-        "sources": sources,
-    }
+                # Only use recent conversation.
+                # This reduces the amount of text sent to the model.
+                recent_messages = st.session_state.messages[-6:]
 
-    st.session_state.messages.append(assistant_message)
+                # Look for relevant document information.
+                context = find_relevant_context(prompt)
 
-st.session_state.chats[st.session_state.current_chat] = (
-    st.session_state.messages
-)
+                system_prompt = """
+You are a helpful AI assistant.
 
-save_history(st.session_state.chats)
+Give clear and useful answers.
+
+Do not unnecessarily repeat the user's question.
+
+If the user asks a simple question, answer directly.
+
+If document context is provided, use it when relevant.
+Do not invent information from documents.
+"""
+
+                if context:
+
+                    system_prompt += f"""
+
+Relevant document context:
+
+{context}
+"""
+
+
+                messages = [
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    }
+                ]
+
+                # Add only recent conversation
+                messages.extend(recent_messages)
+
+
+                # ------------------------------------------------
+                # GENERATE RESPONSE
+                # ------------------------------------------------
+
+                response = client.chat_completion(
+                    messages=messages,
+                    model=MODEL_NAME,
+                    max_tokens=160,
+                    temperature=0.7
+                )
+
+                answer = response.choices[0].message.content
+
+
+                # ------------------------------------------------
+                # DISPLAY
+                # ------------------------------------------------
+
+                st.markdown(answer)
+
+
+                # Save response
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer
+                })
+
+
+            except Exception as e:
+
+                st.error(
+                    "Sorry, I couldn't generate a response."
+                )
+
+                st.code(str(e))
