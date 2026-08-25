@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer, util
 
 
 # ============================================================
-# CONFIGURATION
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -17,7 +17,7 @@ st.set_page_config(
 
 
 # ============================================================
-# HUGGING FACE TOKEN
+# SECRETS
 # ============================================================
 
 try:
@@ -27,21 +27,31 @@ except Exception:
 
 if not HF_TOKEN:
     st.error(
-        "Hugging Face token not found. "
-        "Add HF_TOKEN in Streamlit Secrets."
+        "Hugging Face token not found.\n\n"
+        "Go to Streamlit Cloud → Settings → Secrets "
+        "and add HF_TOKEN."
     )
     st.stop()
 
 
 # ============================================================
-# SETTINGS
+# MODEL
 # ============================================================
 
-MODEL_NAME = "Qwen/Qwen3-0.6B"
+# You can change this later from Streamlit Secrets
+# without changing this Python file.
+
+try:
+    MODEL_NAME = st.secrets["MODEL_NAME"]
+except Exception:
+    MODEL_NAME = "google/gemma-3-1b-it"
+
+
+# ============================================================
+# DIRECTORIES
+# ============================================================
 
 DOCUMENTS_DIR = Path("documents")
-HISTORY_FILE = Path("chat_history.json")
-
 DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 
@@ -51,6 +61,7 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 @st.cache_resource
 def get_client():
+
     return InferenceClient(
         provider="auto",
         api_key=HF_TOKEN
@@ -66,6 +77,7 @@ client = get_client()
 
 @st.cache_resource
 def get_embedding_model():
+
     return SentenceTransformer(
         "sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -75,14 +87,32 @@ embedding_model = get_embedding_model()
 
 
 # ============================================================
-# PAGE TITLE
+# TITLE
 # ============================================================
 
 st.title("🤖 My AI Chatbot")
 
 st.caption(
-    "Ask questions, upload documents, and chat with your AI assistant."
+    "Ask questions, chat with AI, and ask questions about your documents."
 )
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.header("⚙️ Settings")
+
+    st.write("Model:")
+    st.code(MODEL_NAME)
+
+    if st.button("🗑️ Clear Chat"):
+
+        st.session_state.messages = []
+
+        st.rerun()
 
 
 # ============================================================
@@ -90,32 +120,43 @@ st.caption(
 # ============================================================
 
 if "messages" not in st.session_state:
+
     st.session_state.messages = []
 
 
 # ============================================================
-# PDF FUNCTIONS
+# PDF TEXT EXTRACTION
 # ============================================================
 
 def extract_pdf_text(file_path):
+
     text = ""
 
     try:
+
         reader = PdfReader(file_path)
 
         for page in reader.pages:
+
             page_text = page.extract_text()
 
             if page_text:
+
                 text += page_text + "\n"
 
     except Exception:
+
         return ""
 
     return text
 
 
+# ============================================================
+# LOAD PDF DOCUMENTS
+# ============================================================
+
 def load_documents():
+
     documents = []
 
     for file in DOCUMENTS_DIR.glob("*.pdf"):
@@ -123,18 +164,27 @@ def load_documents():
         text = extract_pdf_text(file)
 
         if text.strip():
-            documents.append({
-                "name": file.name,
-                "text": text
-            })
+
+            documents.append(
+                {
+                    "name": file.name,
+                    "text": text
+                }
+            )
 
     return documents
 
 
+# ============================================================
+# FIND RELEVANT DOCUMENT CONTEXT
+# ============================================================
+
 def find_relevant_context(question):
+
     documents = load_documents()
 
     if not documents:
+
         return ""
 
     texts = [
@@ -142,46 +192,53 @@ def find_relevant_context(question):
         for document in documents
     ]
 
-    question_embedding = embedding_model.encode(
-        question,
-        convert_to_tensor=True
-    )
+    try:
 
-    document_embeddings = embedding_model.encode(
-        texts,
-        convert_to_tensor=True
-    )
-
-    scores = util.cos_sim(
-        question_embedding,
-        document_embeddings
-    )[0]
-
-    best_indices = scores.argsort(
-        descending=True
-    )[:2]
-
-    context = ""
-
-    for index in best_indices:
-
-        index = int(index)
-
-        context += (
-            f"\nDocument: {documents[index]['name']}\n"
-            f"{documents[index]['text'][:4000]}\n"
+        question_embedding = embedding_model.encode(
+            question,
+            convert_to_tensor=True
         )
 
-    return context
+        document_embeddings = embedding_model.encode(
+            texts,
+            convert_to_tensor=True
+        )
+
+        scores = util.cos_sim(
+            question_embedding,
+            document_embeddings
+        )[0]
+
+        best_indices = scores.argsort(
+            descending=True
+        )[:2]
+
+        context = ""
+
+        for index in best_indices:
+
+            index = int(index)
+
+            context += (
+                f"\nDocument: {documents[index]['name']}\n"
+                f"{documents[index]['text'][:4000]}\n"
+            )
+
+        return context
+
+    except Exception:
+
+        return ""
 
 
 # ============================================================
-# DISPLAY CHAT HISTORY
+# DISPLAY PREVIOUS MESSAGES
 # ============================================================
 
 for message in st.session_state.messages:
 
     with st.chat_message(message["role"]):
+
         st.markdown(message["content"])
 
 
@@ -194,24 +251,31 @@ prompt = st.chat_input(
 )
 
 
+# ============================================================
+# PROCESS QUESTION
+# ============================================================
+
 if prompt:
 
-    # ========================================================
-    # USER MESSAGE
-    # ========================================================
+    # --------------------------------------------------------
+    # SHOW USER MESSAGE
+    # --------------------------------------------------------
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": prompt
+        }
+    )
 
     with st.chat_message("user"):
+
         st.markdown(prompt)
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # AI RESPONSE
-    # ========================================================
+    # --------------------------------------------------------
 
     with st.chat_message("assistant"):
 
@@ -219,43 +283,42 @@ if prompt:
 
             try:
 
-                # ------------------------------------------------
-                # RECENT CONVERSATION
-                # ------------------------------------------------
-
+                # Keep only recent messages.
+                # This reduces unnecessary input.
                 recent_messages = (
                     st.session_state.messages[-6:]
                 )
 
 
                 # ------------------------------------------------
-                # DOCUMENT CONTEXT
+                # DOCUMENT SEARCH
                 # ------------------------------------------------
 
                 context = find_relevant_context(prompt)
 
 
                 # ------------------------------------------------
-                # SYSTEM PROMPT
+                # SYSTEM INSTRUCTION
                 # ------------------------------------------------
 
                 system_prompt = """
 You are a helpful AI assistant.
 
-Give clear, useful, and accurate answers.
+Answer the user's question clearly and directly.
+
+For simple questions, give a simple answer.
+
+For complex questions, explain the important points.
 
 Do not unnecessarily repeat the user's question.
 
-For simple questions, answer directly.
+If relevant document information is provided,
+use that information in your answer.
 
-For complex questions, explain the answer clearly.
+Do not invent facts from documents.
 
-If document context is provided, use it when relevant.
-
-Do not invent information from documents.
-
-If the document does not contain the requested information,
-say that the information was not found in the document.
+If the requested information cannot be found
+in the provided documents, say so clearly.
 """
 
 
@@ -263,14 +326,14 @@ say that the information was not found in the document.
 
                     system_prompt += f"""
 
-Relevant document context:
+Relevant document information:
 
 {context}
 """
 
 
                 # ------------------------------------------------
-                # CREATE MESSAGES
+                # BUILD MESSAGE LIST
                 # ------------------------------------------------
 
                 messages = [
@@ -284,13 +347,17 @@ Relevant document context:
 
 
                 # ------------------------------------------------
-                # GENERATE RESPONSE
+                # CALL HUGGING FACE
                 # ------------------------------------------------
 
                 response = client.chat_completion(
-                    messages=messages,
+
                     model=MODEL_NAME,
+
+                    messages=messages,
+
                     max_tokens=500,
+
                     temperature=0.7
                 )
 
@@ -299,7 +366,11 @@ Relevant document context:
                 # GET ANSWER
                 # ------------------------------------------------
 
-                answer = response.choices[0].message.content
+                answer = (
+                    response.choices[0]
+                    .message
+                    .content
+                )
 
 
                 # ------------------------------------------------
@@ -313,16 +384,20 @@ Relevant document context:
                 # SAVE ANSWER
                 # ------------------------------------------------
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer
-                })
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": answer
+                    }
+                )
 
 
             except Exception as e:
 
                 st.error(
-                    "Sorry, I couldn't generate a response."
+                    "The AI could not generate a response."
                 )
 
-                st.code(str(e))
+                st.code(
+                    str(e)
+                )
