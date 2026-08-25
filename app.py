@@ -66,41 +66,37 @@ client = get_client()
 
 
 # ============================================================
-# PAGE
+# CHAT MANAGEMENT
 # ============================================================
 
-st.title("🤖 My AI Chatbot")
+if "chats" not in st.session_state:
 
-st.caption(
-    "A simple AI assistant with conversation Made By Faizan Ali"
-)
+    st.session_state.chats = {
+        "New Chat": []
+    }
 
 
-# ============================================================
-# SIDEBAR
-# ============================================================
+if "current_chat" not in st.session_state:
 
-with st.sidebar:
-
-    st.header("⚙️ Settings")
-
-    
-
-    st.divider()
-
-    if st.button("🗑️ Clear Chat"):
-
-        st.session_state.messages = []
-
-        st.rerun()
+    st.session_state.current_chat = "New Chat"
 
 
 # ============================================================
-# SESSION STATE
+# CREATE NEW CHAT
 # ============================================================
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def create_new_chat():
+
+    number = 1
+
+    while f"New Chat {number}" in st.session_state.chats:
+        number += 1
+
+    chat_name = f"New Chat {number}"
+
+    st.session_state.chats[chat_name] = []
+
+    st.session_state.current_chat = chat_name
 
 
 # ============================================================
@@ -123,6 +119,7 @@ def extract_pdf_text(file_path):
                 text += page_text + "\n"
 
     except Exception:
+
         return ""
 
     return text
@@ -185,20 +182,134 @@ def find_relevant_context(question):
 
 
 # ============================================================
-# DISPLAY CHAT HISTORY
+# SIDEBAR
 # ============================================================
 
-for message in st.session_state.messages:
+with st.sidebar:
 
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    st.header("💬 Chats")
+
+    # --------------------------------------------------------
+    # NEW CHAT BUTTON
+    # --------------------------------------------------------
+
+    if st.button(
+        "➕ New Chat",
+        use_container_width=True
+    ):
+
+        create_new_chat()
+
+        st.rerun()
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # CHAT LIST
+    # --------------------------------------------------------
+
+    chat_names = list(
+        st.session_state.chats.keys()
+    )
+
+    for chat_name in chat_names:
+
+        is_current = (
+            chat_name
+            == st.session_state.current_chat
+        )
+
+        button_text = (
+            "▶ " + chat_name
+            if is_current
+            else chat_name
+        )
+
+        if st.button(
+            button_text,
+            key=f"chat_{chat_name}",
+            use_container_width=True
+        ):
+
+            st.session_state.current_chat = chat_name
+
+            st.rerun()
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # DELETE CURRENT CHAT
+    # --------------------------------------------------------
+
+    if st.button(
+        "🗑️ Delete Current Chat",
+        use_container_width=True
+    ):
+
+        current = st.session_state.current_chat
+
+        if len(st.session_state.chats) > 1:
+
+            del st.session_state.chats[current]
+
+            st.session_state.current_chat = (
+                list(st.session_state.chats.keys())[0]
+            )
+
+        else:
+
+            st.session_state.chats[current] = []
+
+
+        st.rerun()
+
+
+# ============================================================
+# CURRENT CHAT
+# ============================================================
+
+current_chat = st.session_state.current_chat
+
+messages = st.session_state.chats[current_chat]
+
+
+# ============================================================
+# PAGE TITLE
+# ============================================================
+
+st.title("🤖 My AI Chatbot")
+
+st.caption(
+    f"Current chat: {current_chat}"
+)
+
+
+# ============================================================
+# DISPLAY CURRENT CHAT
+# ============================================================
+
+for message in messages:
+
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
 
 
 # ============================================================
 # CHAT INPUT
 # ============================================================
 
-prompt = st.chat_input("Ask me anything...")
+prompt = st.chat_input(
+    "Ask me anything..."
+)
 
 
 # ============================================================
@@ -211,17 +322,54 @@ if prompt:
     # USER MESSAGE
     # --------------------------------------------------------
 
-    st.session_state.messages.append({
+    messages.append({
         "role": "user",
         "content": prompt
     })
 
+
+    # --------------------------------------------------------
+    # AUTOMATIC CHAT TITLE
+    # --------------------------------------------------------
+
+    if current_chat.startswith("New Chat"):
+
+        words = prompt.split()
+
+        if len(words) > 6:
+
+            title = " ".join(words[:6]) + "..."
+
+        else:
+
+            title = prompt
+
+        title = title[:40]
+
+        if title != current_chat:
+
+            st.session_state.chats[title] = messages
+
+            del st.session_state.chats[current_chat]
+
+            st.session_state.current_chat = title
+
+            current_chat = title
+
+            messages = st.session_state.chats[title]
+
+
+    # --------------------------------------------------------
+    # DISPLAY USER MESSAGE
+    # --------------------------------------------------------
+
     with st.chat_message("user"):
+
         st.markdown(prompt)
 
 
     # --------------------------------------------------------
-    # AI MESSAGE
+    # AI RESPONSE
     # --------------------------------------------------------
 
     with st.chat_message("assistant"):
@@ -230,12 +378,11 @@ if prompt:
 
             try:
 
-                # Only keep the most recent conversation
-                recent_messages = (
-                    st.session_state.messages[-4:]
-                )
+                # Keep recent conversation small
+                recent_messages = messages[-4:]
 
-                # Find relevant PDF information
+
+                # Search PDF documents
                 context = find_relevant_context(prompt)
 
 
@@ -275,28 +422,30 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # CREATE MESSAGES
+                # BUILD MESSAGES
                 # ------------------------------------------------
 
-                messages = [
+                api_messages = [
                     {
                         "role": "system",
                         "content": system_prompt
                     }
                 ]
 
-                messages.extend(recent_messages)
+                api_messages.extend(
+                    recent_messages
+                )
 
 
                 # ------------------------------------------------
-                # HUGGING FACE REQUEST
+                # CALL HUGGING FACE
                 # ------------------------------------------------
 
                 response = client.chat_completion(
 
                     model=MODEL_NAME,
 
-                    messages=messages,
+                    messages=api_messages,
 
                     max_tokens=7000,
 
@@ -305,45 +454,29 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # EXTRACT RESPONSE
+                # GET FINAL ANSWER
                 # ------------------------------------------------
 
                 answer = None
 
                 if response.choices:
 
-                    message = response.choices[0].message
+                    message = (
+                        response.choices[0].message
+                    )
 
-                    # Normal response
-                    if hasattr(message, "content"):
-                        answer = message.content
-
-                    # Some models/providers may return
-                    # reasoning separately.
-                    if not answer and hasattr(
+                    answer = getattr(
                         message,
-                        "reasoning_content"
-                    ):
-                        answer = message.reasoning_content
+                        "content",
+                        None
+                    )
 
-
-                # ------------------------------------------------
-                # CHECK RESPONSE
-                # ------------------------------------------------
 
                 if not answer:
 
-                    st.warning(
-                        "The model returned no text."
-                    )
-
-                    st.code(
-                        str(response)
-                    )
-
                     answer = (
-                        "I received a response from the model, "
-                        "but it contained no readable answer."
+                        "I couldn't generate a final answer. "
+                        "Please try again."
                     )
 
 
@@ -355,10 +488,10 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # SAVE ONLY REAL ANSWERS
+                # SAVE ANSWER
                 # ------------------------------------------------
 
-                st.session_state.messages.append({
+                messages.append({
                     "role": "assistant",
                     "content": answer
                 })
@@ -371,3 +504,14 @@ Relevant document information:
                 )
 
                 st.code(str(e))
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "🤖 My AI Chatbot"
+)
