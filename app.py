@@ -331,11 +331,15 @@ Relevant document information:
                 # ANSWER
                 # ------------------------------------------------
 
-                answer = (
-                    response.choices[0]
-                    .message
-                    .content
-                )
+                message = response.choices[0].message
+
+answer = getattr(message, "content", None)
+
+if not answer:
+    answer = getattr(message, "reasoning_content", None)
+
+if not answer:
+    answer = "I received a response, but there was no text content."
 
 
                 # ------------------------------------------------
