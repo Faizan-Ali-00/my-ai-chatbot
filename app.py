@@ -406,6 +406,22 @@ with st.sidebar:
         save_chats()
 
         st.rerun()
+        st.divider()
+
+st.header("ℹ️ About")
+
+st.write(
+    "My AI Chatbot is an AI assistant designed "
+    "to answer questions, maintain multiple "
+    "conversations, and analyze PDF documents."
+)
+
+st.write("**Created by:** Faizi")
+
+st.write(
+    "**Features:** AI chat, multiple chats, "
+    "chat switching, chat history, and PDF analysis."
+)
 
 
 # ============================================================
