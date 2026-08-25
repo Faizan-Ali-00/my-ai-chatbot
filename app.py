@@ -27,7 +27,7 @@ except Exception:
 if not HF_TOKEN:
     st.error("Hugging Face token not found.")
     st.info(
-        "Go to Streamlit Cloud → Manage app → Settings → Secrets "
+        "Go to Manage app → Settings → Secrets "
         "and add HF_TOKEN."
     )
     st.stop()
@@ -36,9 +36,6 @@ if not HF_TOKEN:
 # ============================================================
 # MODEL
 # ============================================================
-
-# The model can be changed from Streamlit Secrets
-# without changing app.py.
 
 try:
     MODEL_NAME = st.secrets["MODEL_NAME"]
@@ -60,7 +57,6 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 @st.cache_resource
 def get_client():
-
     return InferenceClient(
         api_key=HF_TOKEN
     )
@@ -89,7 +85,6 @@ with st.sidebar:
     st.header("⚙️ Settings")
 
     st.write("Current model:")
-
     st.code(MODEL_NAME)
 
     st.divider()
@@ -106,7 +101,6 @@ with st.sidebar:
 # ============================================================
 
 if "messages" not in st.session_state:
-
     st.session_state.messages = []
 
 
@@ -127,11 +121,9 @@ def extract_pdf_text(file_path):
             page_text = page.extract_text()
 
             if page_text:
-
                 text += page_text + "\n"
 
     except Exception:
-
         return ""
 
     return text
@@ -147,12 +139,10 @@ def load_documents():
 
         if text.strip():
 
-            documents.append(
-                {
-                    "name": file.name,
-                    "text": text
-                }
-            )
+            documents.append({
+                "name": file.name,
+                "text": text
+            })
 
     return documents
 
@@ -162,7 +152,6 @@ def find_relevant_context(question):
     documents = load_documents()
 
     if not documents:
-
         return ""
 
     question_words = set(
@@ -188,12 +177,11 @@ def find_relevant_context(question):
             best_document = document
 
     if best_document is None:
-
         return ""
 
     return (
         f"Document: {best_document['name']}\n\n"
-        f"{best_document['text'][:5000]}"
+        f"{best_document['text'][:4000]}"
     )
 
 
@@ -204,7 +192,6 @@ def find_relevant_context(question):
 for message in st.session_state.messages:
 
     with st.chat_message(message["role"]):
-
         st.markdown(message["content"])
 
 
@@ -212,9 +199,7 @@ for message in st.session_state.messages:
 # CHAT INPUT
 # ============================================================
 
-prompt = st.chat_input(
-    "Ask me anything..."
-)
+prompt = st.chat_input("Ask me anything...")
 
 
 # ============================================================
@@ -227,15 +212,12 @@ if prompt:
     # USER MESSAGE
     # --------------------------------------------------------
 
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": prompt
-        }
-    )
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
     with st.chat_message("user"):
-
         st.markdown(prompt)
 
 
@@ -249,13 +231,12 @@ if prompt:
 
             try:
 
-                # Keep only recent conversation
+                # Only keep the most recent conversation
                 recent_messages = (
-                    st.session_state.messages[-6:]
+                    st.session_state.messages[-4:]
                 )
 
-
-                # Search documents
+                # Find relevant PDF information
                 context = find_relevant_context(prompt)
 
 
@@ -295,16 +276,14 @@ Relevant document information:
 
 
                 # ------------------------------------------------
-                # MESSAGES
+                # CREATE MESSAGES
                 # ------------------------------------------------
 
                 messages = [
-
                     {
                         "role": "system",
                         "content": system_prompt
                     }
-
                 ]
 
                 messages.extend(recent_messages)
@@ -320,26 +299,53 @@ Relevant document information:
 
                     messages=messages,
 
-                    max_tokens=300,
+                    max_tokens=200,
 
                     temperature=0.7
-
                 )
 
 
                 # ------------------------------------------------
-                # ANSWER
+                # EXTRACT RESPONSE
                 # ------------------------------------------------
 
-                message = response.choices[0].message
+                answer = None
 
-answer = getattr(message, "content", None)
+                if response.choices:
 
-if not answer:
-    answer = getattr(message, "reasoning_content", None)
+                    message = response.choices[0].message
 
-if not answer:
-    answer = "I received a response, but there was no text content."
+                    # Normal response
+                    if hasattr(message, "content"):
+                        answer = message.content
+
+                    # Some models/providers may return
+                    # reasoning separately.
+                    if not answer and hasattr(
+                        message,
+                        "reasoning_content"
+                    ):
+                        answer = message.reasoning_content
+
+
+                # ------------------------------------------------
+                # CHECK RESPONSE
+                # ------------------------------------------------
+
+                if not answer:
+
+                    st.warning(
+                        "The model returned no text."
+                    )
+
+                    st.code(
+                        str(response)
+                    )
+
+                    answer = (
+                        "I received a response from the model, "
+                        "but it contained no readable answer."
+                    )
 
 
                 # ------------------------------------------------
@@ -350,15 +356,13 @@ if not answer:
 
 
                 # ------------------------------------------------
-                # SAVE
+                # SAVE ONLY REAL ANSWERS
                 # ------------------------------------------------
 
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
-                )
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer
+                })
 
 
             except Exception as e:
