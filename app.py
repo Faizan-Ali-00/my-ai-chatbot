@@ -84,8 +84,7 @@ with st.sidebar:
 
     st.header("⚙️ Settings")
 
-    st.write("Current model:")
-    st.code(MODEL_NAME)
+    
 
     st.divider()
 
