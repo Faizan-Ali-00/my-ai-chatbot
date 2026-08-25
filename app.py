@@ -2,6 +2,7 @@ import streamlit as st
 from huggingface_hub import InferenceClient
 from pathlib import Path
 from pypdf import PdfReader
+import json
 
 
 # ============================================================
@@ -24,12 +25,16 @@ try:
 except Exception:
     HF_TOKEN = None
 
+
 if not HF_TOKEN:
+
     st.error("Hugging Face token not found.")
+
     st.info(
         "Go to Manage app → Settings → Secrets "
         "and add HF_TOKEN."
     )
+
     st.stop()
 
 
@@ -44,11 +49,13 @@ except Exception:
 
 
 # ============================================================
-# DOCUMENTS
+# FILES
 # ============================================================
 
 DOCUMENTS_DIR = Path("documents")
 DOCUMENTS_DIR.mkdir(exist_ok=True)
+
+HISTORY_FILE = Path("chat_history.json")
 
 
 # ============================================================
@@ -57,6 +64,7 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 @st.cache_resource
 def get_client():
+
     return InferenceClient(
         api_key=HF_TOKEN
     )
@@ -66,19 +74,89 @@ client = get_client()
 
 
 # ============================================================
-# CHAT MANAGEMENT
+# LOAD CHATS FROM FILE
+# ============================================================
+
+def load_chats():
+
+    if not HISTORY_FILE.exists():
+
+        return {
+            "New Chat": []
+        }
+
+
+    try:
+
+        with open(
+            HISTORY_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            chats = json.load(file)
+
+
+        if not chats:
+
+            return {
+                "New Chat": []
+            }
+
+
+        return chats
+
+
+    except Exception:
+
+        return {
+            "New Chat": []
+        }
+
+
+# ============================================================
+# SAVE CHATS TO FILE
+# ============================================================
+
+def save_chats():
+
+    try:
+
+        with open(
+            HISTORY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                st.session_state.chats,
+                file,
+                indent=2,
+                ensure_ascii=False
+            )
+
+
+    except Exception as e:
+
+        st.error(
+            f"Could not save chats: {e}"
+        )
+
+
+# ============================================================
+# CHAT SESSION
 # ============================================================
 
 if "chats" not in st.session_state:
 
-    st.session_state.chats = {
-        "New Chat": []
-    }
+    st.session_state.chats = load_chats()
 
 
 if "current_chat" not in st.session_state:
 
-    st.session_state.current_chat = "New Chat"
+    st.session_state.current_chat = (
+        list(st.session_state.chats.keys())[0]
+    )
 
 
 # ============================================================
@@ -90,13 +168,19 @@ def create_new_chat():
     number = 1
 
     while f"New Chat {number}" in st.session_state.chats:
+
         number += 1
 
+
     chat_name = f"New Chat {number}"
+
 
     st.session_state.chats[chat_name] = []
 
     st.session_state.current_chat = chat_name
+
+
+    save_chats()
 
 
 # ============================================================
@@ -116,46 +200,69 @@ def extract_pdf_text(file_path):
             page_text = page.extract_text()
 
             if page_text:
+
                 text += page_text + "\n"
+
 
     except Exception:
 
         return ""
 
+
     return text
 
+
+# ============================================================
+# LOAD DOCUMENTS
+# ============================================================
 
 def load_documents():
 
     documents = []
 
+
     for file in DOCUMENTS_DIR.glob("*.pdf"):
 
         text = extract_pdf_text(file)
 
+
         if text.strip():
 
             documents.append({
+
                 "name": file.name,
+
                 "text": text
+
             })
+
 
     return documents
 
+
+# ============================================================
+# FIND RELEVANT PDF CONTEXT
+# ============================================================
 
 def find_relevant_context(question):
 
     documents = load_documents()
 
+
     if not documents:
+
         return ""
+
 
     question_words = set(
         question.lower().split()
     )
 
+
     best_document = None
+
     best_score = 0
+
 
     for document in documents:
 
@@ -163,21 +270,32 @@ def find_relevant_context(question):
             document["text"].lower().split()
         )
 
+
         score = len(
-            question_words.intersection(document_words)
+            question_words.intersection(
+                document_words
+            )
         )
+
 
         if score > best_score:
 
             best_score = score
+
             best_document = document
 
+
     if best_document is None:
+
         return ""
 
+
     return (
+
         f"Document: {best_document['name']}\n\n"
+
         f"{best_document['text'][:4000]}"
+
     )
 
 
@@ -189,8 +307,9 @@ with st.sidebar:
 
     st.header("💬 Chats")
 
+
     # --------------------------------------------------------
-    # NEW CHAT BUTTON
+    # NEW CHAT
     # --------------------------------------------------------
 
     if st.button(
@@ -214,18 +333,25 @@ with st.sidebar:
         st.session_state.chats.keys()
     )
 
+
     for chat_name in chat_names:
 
         is_current = (
+
             chat_name
             == st.session_state.current_chat
+
         )
 
-        button_text = (
-            "▶ " + chat_name
-            if is_current
-            else chat_name
-        )
+
+        if is_current:
+
+            button_text = "▶ " + chat_name
+
+        else:
+
+            button_text = chat_name
+
 
         if st.button(
             button_text,
@@ -233,7 +359,9 @@ with st.sidebar:
             use_container_width=True
         ):
 
-            st.session_state.current_chat = chat_name
+            st.session_state.current_chat = (
+                chat_name
+            )
 
             st.rerun()
 
@@ -250,20 +378,32 @@ with st.sidebar:
         use_container_width=True
     ):
 
-        current = st.session_state.current_chat
+        current = (
+            st.session_state.current_chat
+        )
+
 
         if len(st.session_state.chats) > 1:
 
             del st.session_state.chats[current]
 
+
             st.session_state.current_chat = (
-                list(st.session_state.chats.keys())[0]
+                list(
+                    st.session_state.chats.keys()
+                )[0]
             )
+
 
         else:
 
             st.session_state.chats[current] = []
 
+
+        # IMPORTANT:
+        # Save BEFORE rerun.
+
+        save_chats()
 
         st.rerun()
 
@@ -272,9 +412,14 @@ with st.sidebar:
 # CURRENT CHAT
 # ============================================================
 
-current_chat = st.session_state.current_chat
+current_chat = (
+    st.session_state.current_chat
+)
 
-messages = st.session_state.chats[current_chat]
+
+messages = (
+    st.session_state.chats[current_chat]
+)
 
 
 # ============================================================
@@ -289,7 +434,7 @@ st.caption(
 
 
 # ============================================================
-# DISPLAY CURRENT CHAT
+# DISPLAY CHAT HISTORY
 # ============================================================
 
 for message in messages:
@@ -318,13 +463,17 @@ prompt = st.chat_input(
 
 if prompt:
 
+
     # --------------------------------------------------------
     # USER MESSAGE
     # --------------------------------------------------------
 
     messages.append({
+
         "role": "user",
+
         "content": prompt
+
     })
 
 
@@ -336,27 +485,66 @@ if prompt:
 
         words = prompt.split()
 
+
         if len(words) > 6:
 
-            title = " ".join(words[:6]) + "..."
+            title = (
+                " ".join(words[:6])
+                + "..."
+            )
 
         else:
 
             title = prompt
 
+
         title = title[:40]
+
+
+        # Prevent duplicate chat names
+
+        original_title = title
+
+        number = 2
+
+
+        while (
+            title in st.session_state.chats
+            and title != current_chat
+        ):
+
+            title = (
+                f"{original_title} {number}"
+            )
+
+            number += 1
+
 
         if title != current_chat:
 
-            st.session_state.chats[title] = messages
+            st.session_state.chats[title] = (
+                messages
+            )
 
-            del st.session_state.chats[current_chat]
 
-            st.session_state.current_chat = title
+            del st.session_state.chats[
+                current_chat
+            ]
+
+
+            st.session_state.current_chat = (
+                title
+            )
+
 
             current_chat = title
 
-            messages = st.session_state.chats[title]
+            messages = (
+                st.session_state.chats[title]
+            )
+
+
+            save_chats()
 
 
     # --------------------------------------------------------
@@ -378,36 +566,53 @@ if prompt:
 
             try:
 
-                # Keep recent conversation small
-                recent_messages = messages[-4:]
+
+                # ----------------------------------------------
+                # KEEP RECENT CONVERSATION
+                # ----------------------------------------------
+
+                recent_messages = (
+                    messages[-4:]
+                )
 
 
-                # Search PDF documents
-                context = find_relevant_context(prompt)
+                # ----------------------------------------------
+                # PDF CONTEXT
+                # ----------------------------------------------
+
+                context = (
+                    find_relevant_context(prompt)
+                )
 
 
-                # ------------------------------------------------
+                # ----------------------------------------------
                 # SYSTEM PROMPT
-                # ------------------------------------------------
+                # ----------------------------------------------
 
                 system_prompt = """
+
 You are a helpful AI assistant.
 
-Answer the user's question clearly and directly.
+Answer the user's question clearly
+and directly.
 
 For simple questions, answer directly.
 
-For complicated questions, explain step by step.
+For complicated questions,
+explain step by step.
 
-Do not unnecessarily repeat the user's question.
+Do not unnecessarily repeat
+the user's question.
 
-If relevant document information is provided,
-use it when answering.
+If relevant document information
+is provided, use it when answering.
 
 Do not invent information from documents.
 
-If the answer cannot be found in the document,
-say that clearly.
+If the answer cannot be found in
+the document, say that clearly.
+
+Do not reveal internal reasoning.
 """
 
 
@@ -421,25 +626,31 @@ Relevant document information:
 """
 
 
-                # ------------------------------------------------
-                # BUILD MESSAGES
-                # ------------------------------------------------
+                # ----------------------------------------------
+                # API MESSAGES
+                # ----------------------------------------------
 
                 api_messages = [
+
                     {
+
                         "role": "system",
+
                         "content": system_prompt
+
                     }
+
                 ]
+
 
                 api_messages.extend(
                     recent_messages
                 )
 
 
-                # ------------------------------------------------
-                # CALL HUGGING FACE
-                # ------------------------------------------------
+                # ----------------------------------------------
+                # HUGGING FACE REQUEST
+                # ----------------------------------------------
 
                 response = client.chat_completion(
 
@@ -450,20 +661,23 @@ Relevant document information:
                     max_tokens=7000,
 
                     temperature=0.7
+
                 )
 
 
-                # ------------------------------------------------
+                # ----------------------------------------------
                 # GET FINAL ANSWER
-                # ------------------------------------------------
+                # ----------------------------------------------
 
                 answer = None
+
 
                 if response.choices:
 
                     message = (
                         response.choices[0].message
                     )
+
 
                     answer = getattr(
                         message,
@@ -472,29 +686,46 @@ Relevant document information:
                     )
 
 
+                # ----------------------------------------------
+                # CHECK ANSWER
+                # ----------------------------------------------
+
                 if not answer:
 
                     answer = (
-                        "I couldn't generate a final answer. "
+
+                        "I couldn't generate "
+                        "a final answer. "
                         "Please try again."
+
                     )
 
 
-                # ------------------------------------------------
-                # DISPLAY
-                # ------------------------------------------------
+                # ----------------------------------------------
+                # DISPLAY ANSWER
+                # ----------------------------------------------
 
                 st.markdown(answer)
 
 
-                # ------------------------------------------------
+                # ----------------------------------------------
                 # SAVE ANSWER
-                # ------------------------------------------------
+                # ----------------------------------------------
 
                 messages.append({
+
                     "role": "assistant",
+
                     "content": answer
+
                 })
+
+
+                # ----------------------------------------------
+                # SAVE ENTIRE CHAT
+                # ----------------------------------------------
+
+                save_chats()
 
 
             except Exception as e:
@@ -503,7 +734,9 @@ Relevant document information:
                     "The AI could not generate a response."
                 )
 
-                st.code(str(e))
+                st.code(
+                    str(e)
+                )
 
 
 # ============================================================
