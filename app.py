@@ -72,7 +72,7 @@ client = get_client()
 st.title("🤖 My AI Chatbot")
 
 st.caption(
-    "A simple AI assistant with conversation and PDF support."
+    "A simple AI assistant with conversation Made By Faizan Ali"
 )
 
 
