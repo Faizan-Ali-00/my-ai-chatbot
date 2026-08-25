@@ -26,7 +26,10 @@ except Exception:
 
 if not HF_TOKEN:
     st.error("Hugging Face token not found.")
-    st.info("Go to Manage app → Settings → Secrets and add HF_TOKEN.")
+    st.info(
+        "Go to Streamlit Cloud → Manage app → Settings → Secrets "
+        "and add HF_TOKEN."
+    )
     st.stop()
 
 
@@ -34,7 +37,18 @@ if not HF_TOKEN:
 # MODEL
 # ============================================================
 
-MODEL_NAME = "google/gemma-2-2b-it"
+# The model can be changed from Streamlit Secrets
+# without changing app.py.
+
+try:
+    MODEL_NAME = st.secrets["MODEL_NAME"]
+except Exception:
+    MODEL_NAME = "openai/gpt-oss-120b"
+
+
+# ============================================================
+# DOCUMENTS
+# ============================================================
 
 DOCUMENTS_DIR = Path("documents")
 DOCUMENTS_DIR.mkdir(exist_ok=True)
@@ -62,7 +76,7 @@ client = get_client()
 st.title("🤖 My AI Chatbot")
 
 st.caption(
-    "Ask questions, chat with AI, and ask questions about your documents."
+    "A simple AI assistant with conversation and PDF support."
 )
 
 
@@ -74,9 +88,11 @@ with st.sidebar:
 
     st.header("⚙️ Settings")
 
-    st.write("Model")
+    st.write("Current model:")
 
     st.code(MODEL_NAME)
+
+    st.divider()
 
     if st.button("🗑️ Clear Chat"):
 
@@ -95,7 +111,7 @@ if "messages" not in st.session_state:
 
 
 # ============================================================
-# PDF READER
+# PDF FUNCTIONS
 # ============================================================
 
 def extract_pdf_text(file_path):
@@ -121,10 +137,6 @@ def extract_pdf_text(file_path):
     return text
 
 
-# ============================================================
-# LOAD PDF DOCUMENTS
-# ============================================================
-
 def load_documents():
 
     documents = []
@@ -135,17 +147,15 @@ def load_documents():
 
         if text.strip():
 
-            documents.append({
-                "name": file.name,
-                "text": text
-            })
+            documents.append(
+                {
+                    "name": file.name,
+                    "text": text
+                }
+            )
 
     return documents
 
-
-# ============================================================
-# FIND DOCUMENT CONTEXT
-# ============================================================
 
 def find_relevant_context(question):
 
@@ -202,28 +212,36 @@ for message in st.session_state.messages:
 # CHAT INPUT
 # ============================================================
 
-prompt = st.chat_input("Ask me anything...")
+prompt = st.chat_input(
+    "Ask me anything..."
+)
 
+
+# ============================================================
+# PROCESS MESSAGE
+# ============================================================
 
 if prompt:
 
-    # ========================================================
+    # --------------------------------------------------------
     # USER MESSAGE
-    # ========================================================
+    # --------------------------------------------------------
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": prompt
+        }
+    )
 
     with st.chat_message("user"):
 
         st.markdown(prompt)
 
 
-    # ========================================================
-    # AI RESPONSE
-    # ========================================================
+    # --------------------------------------------------------
+    # AI MESSAGE
+    # --------------------------------------------------------
 
     with st.chat_message("assistant"):
 
@@ -231,36 +249,38 @@ if prompt:
 
             try:
 
-                # Keep only recent messages
+                # Keep only recent conversation
                 recent_messages = (
                     st.session_state.messages[-6:]
                 )
 
 
-                # Get PDF information
+                # Search documents
                 context = find_relevant_context(prompt)
 
 
-                # =================================================
+                # ------------------------------------------------
                 # SYSTEM PROMPT
-                # =================================================
+                # ------------------------------------------------
 
                 system_prompt = """
 You are a helpful AI assistant.
 
-Answer clearly and directly.
+Answer the user's question clearly and directly.
 
-For simple questions, give a concise answer.
+For simple questions, answer directly.
 
 For complicated questions, explain step by step.
 
 Do not unnecessarily repeat the user's question.
 
-If document information is provided, use it when relevant.
+If relevant document information is provided,
+use it when answering.
 
 Do not invent information from documents.
 
-If you don't know something, say so.
+If the answer cannot be found in the document,
+say that clearly.
 """
 
 
@@ -274,9 +294,9 @@ Relevant document information:
 """
 
 
-                # =================================================
-                # CREATE MESSAGES
-                # =================================================
+                # ------------------------------------------------
+                # MESSAGES
+                # ------------------------------------------------
 
                 messages = [
 
@@ -290,9 +310,9 @@ Relevant document information:
                 messages.extend(recent_messages)
 
 
-                # =================================================
-                # CALL HUGGING FACE
-                # =================================================
+                # ------------------------------------------------
+                # HUGGING FACE REQUEST
+                # ------------------------------------------------
 
                 response = client.chat_completion(
 
@@ -300,16 +320,16 @@ Relevant document information:
 
                     messages=messages,
 
-                    max_tokens=200,
+                    max_tokens=300,
 
                     temperature=0.7
 
                 )
 
 
-                # =================================================
-                # GET ANSWER
-                # =================================================
+                # ------------------------------------------------
+                # ANSWER
+                # ------------------------------------------------
 
                 answer = (
                     response.choices[0]
@@ -318,24 +338,23 @@ Relevant document information:
                 )
 
 
-                # =================================================
-                # DISPLAY ANSWER
-                # =================================================
+                # ------------------------------------------------
+                # DISPLAY
+                # ------------------------------------------------
 
                 st.markdown(answer)
 
 
-                # =================================================
-                # SAVE ANSWER
-                # =================================================
+                # ------------------------------------------------
+                # SAVE
+                # ------------------------------------------------
 
-                st.session_state.messages.append({
-
-                    "role": "assistant",
-
-                    "content": answer
-
-                })
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": answer
+                    }
+                )
 
 
             except Exception as e:
