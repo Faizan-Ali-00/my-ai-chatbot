@@ -1,6 +1,4 @@
-import os
 import streamlit as st
-from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 from pathlib import Path
 from pypdf import PdfReader
@@ -17,7 +15,10 @@ st.set_page_config(
     layout="centered"
 )
 
-load_dotenv()
+
+# ============================================================
+# HUGGING FACE TOKEN
+# ============================================================
 
 try:
     HF_TOKEN = st.secrets["HF_TOKEN"]
@@ -25,8 +26,12 @@ except Exception:
     HF_TOKEN = None
 
 if not HF_TOKEN:
-    st.error("Hugging Face token not found. Add HF_TOKEN in Streamlit Secrets.")
+    st.error(
+        "Hugging Face token not found. "
+        "Add HF_TOKEN in Streamlit Secrets."
+    )
     st.stop()
+
 
 # ============================================================
 # SETTINGS
@@ -47,7 +52,7 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 @st.cache_resource
 def get_client():
     return InferenceClient(
-        provider="hf-inference",
+        provider="auto",
         api_key=HF_TOKEN
     )
 
@@ -111,7 +116,6 @@ def extract_pdf_text(file_path):
 
 
 def load_documents():
-
     documents = []
 
     for file in DOCUMENTS_DIR.glob("*.pdf"):
@@ -128,13 +132,15 @@ def load_documents():
 
 
 def find_relevant_context(question):
-
     documents = load_documents()
 
     if not documents:
         return ""
 
-    texts = [doc["text"] for doc in documents]
+    texts = [
+        document["text"]
+        for document in documents
+    ]
 
     question_embedding = embedding_model.encode(
         question,
@@ -190,9 +196,9 @@ prompt = st.chat_input(
 
 if prompt:
 
-    # --------------------------------------------------------
+    # ========================================================
     # USER MESSAGE
-    # --------------------------------------------------------
+    # ========================================================
 
     st.session_state.messages.append({
         "role": "user",
@@ -203,9 +209,9 @@ if prompt:
         st.markdown(prompt)
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # AI RESPONSE
-    # --------------------------------------------------------
+    # ========================================================
 
     with st.chat_message("assistant"):
 
@@ -213,25 +219,45 @@ if prompt:
 
             try:
 
-                # Only use recent conversation.
-                # This reduces the amount of text sent to the model.
-                recent_messages = st.session_state.messages[-6:]
+                # ------------------------------------------------
+                # RECENT CONVERSATION
+                # ------------------------------------------------
 
-                # Look for relevant document information.
+                recent_messages = (
+                    st.session_state.messages[-6:]
+                )
+
+
+                # ------------------------------------------------
+                # DOCUMENT CONTEXT
+                # ------------------------------------------------
+
                 context = find_relevant_context(prompt)
+
+
+                # ------------------------------------------------
+                # SYSTEM PROMPT
+                # ------------------------------------------------
 
                 system_prompt = """
 You are a helpful AI assistant.
 
-Give clear and useful answers.
+Give clear, useful, and accurate answers.
 
 Do not unnecessarily repeat the user's question.
 
-If the user asks a simple question, answer directly.
+For simple questions, answer directly.
+
+For complex questions, explain the answer clearly.
 
 If document context is provided, use it when relevant.
+
 Do not invent information from documents.
+
+If the document does not contain the requested information,
+say that the information was not found in the document.
 """
+
 
                 if context:
 
@@ -243,6 +269,10 @@ Relevant document context:
 """
 
 
+                # ------------------------------------------------
+                # CREATE MESSAGES
+                # ------------------------------------------------
+
                 messages = [
                     {
                         "role": "system",
@@ -250,7 +280,6 @@ Relevant document context:
                     }
                 ]
 
-                # Add only recent conversation
                 messages.extend(recent_messages)
 
 
@@ -261,21 +290,29 @@ Relevant document context:
                 response = client.chat_completion(
                     messages=messages,
                     model=MODEL_NAME,
-                    max_tokens=160,
+                    max_tokens=500,
                     temperature=0.7
                 )
+
+
+                # ------------------------------------------------
+                # GET ANSWER
+                # ------------------------------------------------
 
                 answer = response.choices[0].message.content
 
 
                 # ------------------------------------------------
-                # DISPLAY
+                # DISPLAY ANSWER
                 # ------------------------------------------------
 
                 st.markdown(answer)
 
 
-                # Save response
+                # ------------------------------------------------
+                # SAVE ANSWER
+                # ------------------------------------------------
+
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": answer
