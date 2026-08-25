@@ -19,12 +19,14 @@ st.set_page_config(
 
 load_dotenv()
 
-HF_TOKEN = os.getenv("HF_TOKEN")
+try:
+    HF_TOKEN = st.secrets["HF_TOKEN"]
+except Exception:
+    HF_TOKEN = None
 
 if not HF_TOKEN:
-    st.error("Hugging Face token not found.")
+    st.error("Hugging Face token not found. Add HF_TOKEN in Streamlit Secrets.")
     st.stop()
-
 
 # ============================================================
 # SETTINGS
