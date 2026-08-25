@@ -37,7 +37,7 @@ if not HF_TOKEN:
 # SETTINGS
 # ============================================================
 
-MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
 DOCUMENTS_DIR = Path("documents")
 HISTORY_FILE = Path("chat_history.json")
