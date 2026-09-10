@@ -130,7 +130,7 @@ if not GROQ_API_KEY:
 try:
     MODEL_NAME = st.secrets["MODEL_NAME"]
 except Exception:
-    MODEL_NAME = "qwen-qwq-32b"  # Qwen 32B on Groq — fast & smart
+    MODEL_NAME = ""qwen/qwen3-32b"  # Qwen 32B on Groq — fast & smart
 
 # ============================================================
 # FILES
@@ -365,8 +365,8 @@ Do not reveal internal reasoning."""
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=api_messages,
-                    max_tokens=2048,
-                    temperature=0.7
+                    max_tokens=1000,
+                    temperature=0.3
                 )
 
                 answer = response.choices[0].message.content
