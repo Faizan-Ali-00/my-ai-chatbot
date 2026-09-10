@@ -22,17 +22,13 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Main background */
     .stApp {
         background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
     }
-
-    /* Hide default streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* Main title */
     .main-title {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
@@ -43,7 +39,6 @@ st.markdown("""
         padding: 1rem 0 0.5rem 0;
         margin-bottom: 0;
     }
-
     .subtitle {
         text-align: center;
         color: #a0a0b0;
@@ -51,7 +46,6 @@ st.markdown("""
         margin-bottom: 2rem;
     }
 
-    /* Chat message bubbles */
     div[data-testid="stChatMessage"] {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -61,30 +55,21 @@ st.markdown("""
         backdrop-filter: blur(10px);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     }
-
-    /* User message special style */
     div[data-testid="stChatMessage"]:has(div[aria-label="Chat message from user"]) {
         background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%);
         border-left: 4px solid #667eea;
     }
-
-    /* Assistant message special style */
     div[data-testid="stChatMessage"]:has(div[aria-label="Chat message from assistant"]) {
         background: linear-gradient(135deg, #f093fb22 0%, #f5576c22 100%);
         border-left: 4px solid #f5576c;
     }
 
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
         border-right: 1px solid rgba(255, 255, 255, 0.1);
     }
+    section[data-testid="stSidebar"] h2 { color: #667eea; }
 
-    section[data-testid="stSidebar"] h2 {
-        color: #667eea;
-    }
-
-    /* Buttons */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -95,13 +80,11 @@ st.markdown("""
         transition: all 0.3s ease;
         width: 100%;
     }
-
     .stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
     }
 
-    /* Chat input */
     .stChatInput textarea {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(102, 126, 234, 0.3) !important;
@@ -109,44 +92,16 @@ st.markdown("""
         color: white !important;
         font-size: 1rem !important;
     }
-
     .stChatInput textarea:focus {
         border-color: #667eea !important;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
     }
 
-    /* Divider */
-    hr {
-        border-color: rgba(255, 255, 255, 0.1);
-        margin: 1rem 0;
-    }
+    hr { border-color: rgba(255, 255, 255, 0.1); margin: 1rem 0; }
+    .stSpinner > div { border-top-color: #667eea !important; }
+    .stAlert { border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
 
-    /* Spinner */
-    .stSpinner > div {
-        border-top-color: #667eea !important;
-    }
-
-    /* Info/success/error boxes */
-    .stAlert {
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.05);
-    }
-
-    /* Text colors */
-    p, h1, h2, h3, h4, h5, h6, span, div {
-        color: #e0e0e8;
-    }
-
-    /* Chat caption */
-    .chat-caption {
-        text-align: center;
-        color: #667eea;
-        font-size: 0.9rem;
-        margin-bottom: 1rem;
-        padding: 0.5rem;
-        background: rgba(102, 126, 234, 0.1);
-        border-radius: 10px;
-    }
+    p, h1, h2, h3, h4, h5, h6, span, div { color: #e0e0e8; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -163,19 +118,19 @@ if not GROQ_API_KEY:
     st.error("🔑 **Groq API key not found.**")
     st.info(
         "**Local:** Add `GROQ_API_KEY=your_key` to your `.env` file.\n\n"
-        "**Streamlit Cloud:** Go to Manage app → Settings → Secrets and add:\n\n"
-        "```\nGROQ_API_KEY = \"your_groq_api_key_here\"\n```"
+        "**Streamlit Cloud:** Manage app → Settings → Secrets:\n\n"
+        "```\nGROQ_API_KEY = \"gsk_your_key_here\"\n```"
     )
     st.stop()
 
 # ============================================================
-# MODEL
+# MODEL — QWEN ON GROQ
 # ============================================================
 
 try:
     MODEL_NAME = st.secrets["MODEL_NAME"]
 except Exception:
-    MODEL_NAME = "llama-3.3-70b-versatile"
+    MODEL_NAME = "qwen-qwq-32b"  # Qwen 32B on Groq — fast & smart
 
 # ============================================================
 # FILES
@@ -183,7 +138,6 @@ except Exception:
 
 DOCUMENTS_DIR = Path("documents")
 DOCUMENTS_DIR.mkdir(exist_ok=True)
-
 HISTORY_FILE = Path("chat_history.json")
 
 # ============================================================
@@ -319,7 +273,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # About section
     st.markdown("### ℹ️ About")
     st.markdown(
         "**Faizi AI Chatbot** — your personal AI assistant "
@@ -338,7 +291,7 @@ messages = st.session_state.chats[current_chat]
 
 st.markdown('<h1 class="main-title">🤖 Faizi AI Chatbot</h1>', unsafe_allow_html=True)
 st.markdown(
-    f'<p class="subtitle">⚡ Powered by Groq · Current chat: <b>{current_chat}</b></p>',
+    f'<p class="subtitle">⚡ Powered by Qwen on Groq · Current chat: <b>{current_chat}</b></p>',
     unsafe_allow_html=True
 )
 
@@ -361,10 +314,9 @@ prompt = st.chat_input("✨ Ask me anything...")
 # ============================================================
 
 if prompt:
-    # Add user message
     messages.append({"role": "user", "content": prompt})
 
-    # Auto-title the chat
+    # Auto-title
     if current_chat.startswith("New Chat"):
         words = prompt.split()
         title = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
@@ -384,11 +336,9 @@ if prompt:
             messages = st.session_state.chats[title]
             save_chats()
 
-    # Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # AI response
     with st.chat_message("assistant"):
         with st.spinner("⚡ Thinking..."):
             try:
@@ -412,7 +362,6 @@ Do not reveal internal reasoning."""
                 api_messages = [{"role": "system", "content": system_prompt}]
                 api_messages.extend(recent_messages)
 
-                # Groq API call
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=api_messages,
@@ -421,7 +370,6 @@ Do not reveal internal reasoning."""
                 )
 
                 answer = response.choices[0].message.content
-
                 if not answer:
                     answer = "I couldn't generate a final answer. Please try again."
 
@@ -440,7 +388,7 @@ Do not reveal internal reasoning."""
 st.markdown("---")
 st.markdown(
     '<p style="text-align:center; color:#667eea; font-size:0.85rem;">'
-    '🤖 Faizi AI Chatbot · Built with Streamlit & Groq'
+    '🤖 Faizi AI Chatbot · Built with Streamlit & Qwen on Groq'
     '</p>',
     unsafe_allow_html=True
 )
