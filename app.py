@@ -4,6 +4,7 @@ from pathlib import Path
 from pypdf import PdfReader
 import json
 import os
+import re
 
 # ============================================================
 # PAGE CONFIG
@@ -104,6 +105,22 @@ st.markdown("""
     p, h1, h2, h3, h4, h5, h6, span, div { color: #e0e0e8; }
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# CLEAN RESPONSE — Strip thinking blocks
+# ============================================================
+
+def clean_response(text):
+    """Remove  thinking... reasoning blocks from model output."""
+    if not text:
+        return ""
+    # Remove full thinking blocks
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Remove any stray thinking tags
+    cleaned = re.sub(r"</?think>", "", cleaned)
+    # Remove extra blank lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 # ============================================================
 # GROQ API KEY
@@ -301,7 +318,10 @@ st.markdown(
 
 for message in messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        content = message["content"]
+        if message["role"] == "assistant":
+            content = clean_response(content)
+        st.markdown(content)
 
 # ============================================================
 # CHAT INPUT
@@ -347,6 +367,9 @@ if prompt:
 
                 system_prompt = """You are a helpful AI assistant.
 
+IMPORTANT: Do NOT show your thinking process. Do NOT use  thinking tags.
+Respond ONLY with the final answer.
+
 Answer the user's question clearly and directly.
 For simple questions, answer directly.
 For complicated questions, explain step by step.
@@ -370,6 +393,8 @@ Do not reveal internal reasoning."""
                 )
 
                 answer = response.choices[0].message.content
+                answer = clean_response(answer)
+
                 if not answer:
                     answer = "I couldn't generate a final answer. Please try again."
 
