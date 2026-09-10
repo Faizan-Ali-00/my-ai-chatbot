@@ -410,7 +410,7 @@ If document info is provided below, use it. Do not invent facts from documents."
                         model=MODEL_NAME,
                         messages=api_messages,
                         max_tokens=1000,
-                        temperature=0.3
+                        temperature=0.4
                     )
 
                 answer = response.choices[0].message.content
