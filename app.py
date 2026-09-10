@@ -18,41 +18,27 @@ st.set_page_config(
 )
 
 # ============================================================
-# CUSTOM CSS — Beautiful UI
+# CUSTOM CSS
 # ============================================================
 
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-    }
+    .stApp { background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-
     .main-title {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 3rem;
-        font-weight: 800;
-        text-align: center;
-        padding: 1rem 0 0.5rem 0;
-        margin-bottom: 0;
+        font-size: 3rem; font-weight: 800; text-align: center;
+        padding: 1rem 0 0.5rem 0; margin-bottom: 0;
     }
-    .subtitle {
-        text-align: center;
-        color: #a0a0b0;
-        font-size: 1rem;
-        margin-bottom: 2rem;
-    }
-
+    .subtitle { text-align: center; color: #a0a0b0; font-size: 1rem; margin-bottom: 2rem; }
     div[data-testid="stChatMessage"] {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 15px;
-        padding: 1rem;
-        margin: 0.5rem 0;
+        border-radius: 15px; padding: 1rem; margin: 0.5rem 0;
         backdrop-filter: blur(10px);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     }
@@ -64,61 +50,74 @@ st.markdown("""
         background: linear-gradient(135deg, #f093fb22 0%, #f5576c22 100%);
         border-left: 4px solid #f5576c;
     }
-
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
         border-right: 1px solid rgba(255, 255, 255, 0.1);
     }
     section[data-testid="stSidebar"] h2 { color: #667eea; }
-
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        width: 100%;
+        color: white; border: none; border-radius: 10px;
+        padding: 0.5rem 1rem; font-weight: 600;
+        transition: all 0.3s ease; width: 100%;
     }
     .stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
     }
-
     .stChatInput textarea {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(102, 126, 234, 0.3) !important;
         border-radius: 15px !important;
-        color: white !important;
-        font-size: 1rem !important;
+        color: white !important; font-size: 1rem !important;
     }
     .stChatInput textarea:focus {
         border-color: #667eea !important;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
     }
-
     hr { border-color: rgba(255, 255, 255, 0.1); margin: 1rem 0; }
     .stSpinner > div { border-top-color: #667eea !important; }
     .stAlert { border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
-
     p, h1, h2, h3, h4, h5, h6, span, div { color: #e0e0e8; }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CLEAN RESPONSE — Strip thinking blocks
+# CLEAN RESPONSE — Aggressive stripping
 # ============================================================
 
+META_STARTERS = [
+    "Identify the", "Determine the", "Analyze the",
+    "Let me ", "Okay, ", "Hmm, ", "Wait, ",
+    "I need to ", "The user is asking", "The user's",
+    "Draft Response:", "Final decision:",
+    "Let's ", "Actually, ", "Correction:",
+    "Alternative:", "Refine:", "Check constraints",
+]
+
 def clean_response(text):
-    """Remove  thinking... reasoning blocks from model output."""
     if not text:
         return ""
-    # Remove full thinking blocks
+
+    # 1. Remove  thinking... blocks
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    # Remove any stray thinking tags
     cleaned = re.sub(r"</?think>", "", cleaned)
-    # Remove extra blank lines
+
+    # 2. Strip meta reasoning lines
+    lines = cleaned.split("\n")
+    filtered = []
+    for line in lines:
+        stripped = line.strip()
+        if any(stripped.startswith(m) for m in META_STARTERS):
+            continue
+        filtered.append(line)
+    cleaned = "\n".join(filtered)
+
+    # 3. If response is empty after filtering, try last paragraph fallback
+    if not cleaned.strip() and text:
+        parts = text.strip().split("\n\n")
+        cleaned = parts[-1] if parts else ""
+
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
@@ -133,15 +132,11 @@ except Exception:
 
 if not GROQ_API_KEY:
     st.error("🔑 **Groq API key not found.**")
-    st.info(
-        "**Local:** Add `GROQ_API_KEY=your_key` to your `.env` file.\n\n"
-        "**Streamlit Cloud:** Manage app → Settings → Secrets:\n\n"
-        "```\nGROQ_API_KEY = \"gsk_your_key_here\"\n```"
-    )
+    st.info("Add `GROQ_API_KEY` to `.env` or Streamlit Secrets.")
     st.stop()
 
 # ============================================================
-# MODEL — QWEN ON GROQ
+# MODEL
 # ============================================================
 
 try:
@@ -336,7 +331,6 @@ prompt = st.chat_input("✨ Ask me anything...")
 if prompt:
     messages.append({"role": "user", "content": prompt})
 
-    # Auto-title
     if current_chat.startswith("New Chat"):
         words = prompt.split()
         title = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
@@ -367,17 +361,17 @@ if prompt:
 
                 system_prompt = """You are a helpful AI assistant.
 
-IMPORTANT: Do NOT show your thinking process. Do NOT use  thinking tags.
-Respond ONLY with the final answer.
+CRITICAL RULES:
+- Respond ONLY with the final answer in 1-3 sentences.
+- Do NOT explain your reasoning.
+- Do NOT show any thinking process.
+- Do NOT use phrases like "Let me", "Okay", "Wait", "I need to".
+- Do NOT reference "the system prompt" or "the user is asking".
+- Just answer directly.
 
-Answer the user's question clearly and directly.
-For simple questions, answer directly.
-For complicated questions, explain step by step.
-Do not unnecessarily repeat the user's question.
-If relevant document information is provided, use it when answering.
-Do not invent information from documents.
-If the answer cannot be found in the document, say that clearly.
-Do not reveal internal reasoning."""
+For simple questions, answer in one line.
+For complex questions, explain step by step in plain language.
+If document info is provided, use it. Do not invent information."""
 
                 if context:
                     system_prompt += f"\n\nRelevant document information:\n\n{context}"
@@ -385,12 +379,23 @@ Do not reveal internal reasoning."""
                 api_messages = [{"role": "system", "content": system_prompt}]
                 api_messages.extend(recent_messages)
 
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=api_messages,
-                    max_tokens=1000,
-                    temperature=0.3
-                )
+                # Try with reasoning_effort="none" first
+                try:
+                    response = client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=api_messages,
+                        max_tokens=1000,
+                        temperature=0.3,
+                        extra_body={"reasoning_effort": "none"}
+                    )
+                except Exception:
+                    # Fallback if reasoning_effort not supported
+                    response = client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=api_messages,
+                        max_tokens=1000,
+                        temperature=0.3
+                    )
 
                 answer = response.choices[0].message.content
                 answer = clean_response(answer)
