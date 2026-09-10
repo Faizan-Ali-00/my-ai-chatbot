@@ -409,8 +409,8 @@ If document info is provided below, use it. Do not invent facts from documents."
                     response = client.chat.completions.create(
                         model=MODEL_NAME,
                         messages=api_messages,
-                        max_tokens=1000,
-                        temperature=0.4
+                        max_tokens=1050,
+                        temperature=0.3
                     )
 
                 answer = response.choices[0].message.content
