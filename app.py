@@ -33,7 +33,8 @@ st.markdown("""
     .stApp { background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    header[data-testid="stHeader"] {background: transparent;}
+
     .main-title {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
@@ -42,6 +43,7 @@ st.markdown("""
         padding: 1rem 0 0.5rem 0; margin-bottom: 0;
     }
     .subtitle { text-align: center; color: #a0a0b0; font-size: 1rem; margin-bottom: 2rem; }
+
     div[data-testid="stChatMessage"] {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -57,11 +59,14 @@ st.markdown("""
         background: linear-gradient(135deg, #f093fb22 0%, #f5576c22 100%);
         border-left: 4px solid #f5576c;
     }
+
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
         border-right: 1px solid rgba(255, 255, 255, 0.1);
+        display: block !important;
     }
     section[data-testid="stSidebar"] h2 { color: #667eea; }
+
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white; border: none; border-radius: 10px;
@@ -72,6 +77,7 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
     }
+
     .stChatInput textarea {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(102, 126, 234, 0.3) !important;
@@ -82,6 +88,7 @@ st.markdown("""
         border-color: #667eea !important;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
     }
+
     hr { border-color: rgba(255, 255, 255, 0.1); margin: 1rem 0; }
     .stSpinner > div { border-top-color: #667eea !important; }
     .stAlert { border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
@@ -90,7 +97,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CLEAN RESPONSE
+# CLEAN RESPONSE — Aggressive stripping
 # ============================================================
 
 META_STARTERS = [
@@ -100,14 +107,19 @@ META_STARTERS = [
     "Draft Response:", "Final decision:",
     "Let's ", "Actually, ", "Correction:",
     "Alternative:", "Refine:", "Check constraints",
+    "Check constraints:", "Final Output",
 ]
 
 def clean_response(text):
+    """Strip thinking blocks and meta reasoning from text."""
     if not text:
         return ""
+
+    # 1. Remove <think>...</think> blocks
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     cleaned = re.sub(r"</?think>", "", cleaned)
 
+    # 2. Remove meta reasoning lines
     lines = cleaned.split("\n")
     filtered = []
     for line in lines:
@@ -117,6 +129,7 @@ def clean_response(text):
         filtered.append(line)
     cleaned = "\n".join(filtered)
 
+    # 3. If everything was stripped, take the last paragraph from original
     if not cleaned.strip() and text:
         parts = text.strip().split("\n\n")
         cleaned = parts[-1] if parts else ""
@@ -166,7 +179,7 @@ def get_client():
 client = get_client()
 
 # ============================================================
-# LOAD / SAVE CHATS
+# LOAD / SAVE CHATS (with cleanup of old messages)
 # ============================================================
 
 def load_chats():
@@ -175,7 +188,17 @@ def load_chats():
     try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as file:
             chats = json.load(file)
-        return chats if chats else {"New Chat": []}
+
+        if not chats:
+            return {"New Chat": []}
+
+        # Clean old assistant messages on load
+        for chat_name, msgs in chats.items():
+            for msg in msgs:
+                if msg.get("role") == "assistant":
+                    msg["content"] = clean_response(msg.get("content", ""))
+
+        return chats
     except Exception:
         return {"New Chat": []}
 
@@ -335,6 +358,7 @@ prompt = st.chat_input("✨ Ask me anything...")
 if prompt:
     messages.append({"role": "user", "content": prompt})
 
+    # Auto-title
     if current_chat.startswith("New Chat"):
         words = prompt.split()
         title = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
