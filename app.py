@@ -1,42 +1,172 @@
 import streamlit as st
-from huggingface_hub import InferenceClient
+from groq import Groq
 from pathlib import Path
 from pypdf import PdfReader
 import json
-
+import os
 
 # ============================================================
-# CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="My AI Chatbot",
+    page_title="Faizi AI Chatbot",
     page_icon="🤖",
-    layout="centered"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# ============================================================
+# CUSTOM CSS — Beautiful UI
+# ============================================================
+
+st.markdown("""
+<style>
+    /* Main background */
+    .stApp {
+        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    }
+
+    /* Hide default streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Main title */
+    .main-title {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3rem;
+        font-weight: 800;
+        text-align: center;
+        padding: 1rem 0 0.5rem 0;
+        margin-bottom: 0;
+    }
+
+    .subtitle {
+        text-align: center;
+        color: #a0a0b0;
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    /* Chat message bubbles */
+    div[data-testid="stChatMessage"] {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    /* User message special style */
+    div[data-testid="stChatMessage"]:has(div[aria-label="Chat message from user"]) {
+        background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%);
+        border-left: 4px solid #667eea;
+    }
+
+    /* Assistant message special style */
+    div[data-testid="stChatMessage"]:has(div[aria-label="Chat message from assistant"]) {
+        background: linear-gradient(135deg, #f093fb22 0%, #f5576c22 100%);
+        border-left: 4px solid #f5576c;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    section[data-testid="stSidebar"] h2 {
+        color: #667eea;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Chat input */
+    .stChatInput textarea {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(102, 126, 234, 0.3) !important;
+        border-radius: 15px !important;
+        color: white !important;
+        font-size: 1rem !important;
+    }
+
+    .stChatInput textarea:focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
+    }
+
+    /* Divider */
+    hr {
+        border-color: rgba(255, 255, 255, 0.1);
+        margin: 1rem 0;
+    }
+
+    /* Spinner */
+    .stSpinner > div {
+        border-top-color: #667eea !important;
+    }
+
+    /* Info/success/error boxes */
+    .stAlert {
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Text colors */
+    p, h1, h2, h3, h4, h5, h6, span, div {
+        color: #e0e0e8;
+    }
+
+    /* Chat caption */
+    .chat-caption {
+        text-align: center;
+        color: #667eea;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        padding: 0.5rem;
+        background: rgba(102, 126, 234, 0.1);
+        border-radius: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
-# HUGGING FACE TOKEN
+# GROQ API KEY
 # ============================================================
 
 try:
-    HF_TOKEN = st.secrets["HF_TOKEN"]
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
-    HF_TOKEN = None
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-
-if not HF_TOKEN:
-
-    st.error("Hugging Face token not found.")
-
+if not GROQ_API_KEY:
+    st.error("🔑 **Groq API key not found.**")
     st.info(
-        "Go to Manage app → Settings → Secrets "
-        "and add HF_TOKEN."
+        "**Local:** Add `GROQ_API_KEY=your_key` to your `.env` file.\n\n"
+        "**Streamlit Cloud:** Go to Manage app → Settings → Secrets and add:\n\n"
+        "```\nGROQ_API_KEY = \"your_groq_api_key_here\"\n```"
     )
-
     st.stop()
-
 
 # ============================================================
 # MODEL
@@ -45,8 +175,7 @@ if not HF_TOKEN:
 try:
     MODEL_NAME = st.secrets["MODEL_NAME"]
 except Exception:
-    MODEL_NAME = "openai/gpt-oss-120b"
-
+    MODEL_NAME = "llama-3.3-70b-versatile"
 
 # ============================================================
 # FILES
@@ -57,710 +186,261 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 HISTORY_FILE = Path("chat_history.json")
 
-
 # ============================================================
-# HUGGING FACE CLIENT
+# GROQ CLIENT
 # ============================================================
 
 @st.cache_resource
 def get_client():
-
-    return InferenceClient(
-        api_key=HF_TOKEN
-    )
-
+    return Groq(api_key=GROQ_API_KEY)
 
 client = get_client()
 
-
 # ============================================================
-# LOAD CHATS FROM FILE
+# LOAD / SAVE CHATS
 # ============================================================
 
 def load_chats():
-
     if not HISTORY_FILE.exists():
-
-        return {
-            "New Chat": []
-        }
-
-
+        return {"New Chat": []}
     try:
-
-        with open(
-            HISTORY_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
+        with open(HISTORY_FILE, "r", encoding="utf-8") as file:
             chats = json.load(file)
-
-
-        if not chats:
-
-            return {
-                "New Chat": []
-            }
-
-
-        return chats
-
-
+        return chats if chats else {"New Chat": []}
     except Exception:
+        return {"New Chat": []}
 
-        return {
-            "New Chat": []
-        }
-
-
-# ============================================================
-# SAVE CHATS TO FILE
-# ============================================================
 
 def save_chats():
-
     try:
-
-        with open(
-            HISTORY_FILE,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                st.session_state.chats,
-                file,
-                indent=2,
-                ensure_ascii=False
-            )
-
-
+        with open(HISTORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(st.session_state.chats, file, indent=2, ensure_ascii=False)
     except Exception as e:
-
-        st.error(
-            f"Could not save chats: {e}"
-        )
-
+        st.error(f"Could not save chats: {e}")
 
 # ============================================================
-# CHAT SESSION
+# SESSION STATE
 # ============================================================
 
 if "chats" not in st.session_state:
-
     st.session_state.chats = load_chats()
 
-
 if "current_chat" not in st.session_state:
-
-    st.session_state.current_chat = (
-        list(st.session_state.chats.keys())[0]
-    )
-
+    st.session_state.current_chat = list(st.session_state.chats.keys())[0]
 
 # ============================================================
 # CREATE NEW CHAT
 # ============================================================
 
 def create_new_chat():
-
     number = 1
-
     while f"New Chat {number}" in st.session_state.chats:
-
         number += 1
-
-
     chat_name = f"New Chat {number}"
-
-
     st.session_state.chats[chat_name] = []
-
     st.session_state.current_chat = chat_name
-
-
     save_chats()
-
 
 # ============================================================
 # PDF FUNCTIONS
 # ============================================================
 
 def extract_pdf_text(file_path):
-
     text = ""
-
     try:
-
         reader = PdfReader(file_path)
-
         for page in reader.pages:
-
             page_text = page.extract_text()
-
             if page_text:
-
                 text += page_text + "\n"
-
-
     except Exception:
-
         return ""
-
-
     return text
 
 
-# ============================================================
-# LOAD DOCUMENTS
-# ============================================================
-
 def load_documents():
-
     documents = []
-
-
     for file in DOCUMENTS_DIR.glob("*.pdf"):
-
         text = extract_pdf_text(file)
-
-
         if text.strip():
-
-            documents.append({
-
-                "name": file.name,
-
-                "text": text
-
-            })
-
-
+            documents.append({"name": file.name, "text": text})
     return documents
 
 
-# ============================================================
-# FIND RELEVANT PDF CONTEXT
-# ============================================================
-
 def find_relevant_context(question):
-
     documents = load_documents()
-
-
     if not documents:
-
         return ""
-
-
-    question_words = set(
-        question.lower().split()
-    )
-
-
+    question_words = set(question.lower().split())
     best_document = None
-
     best_score = 0
-
-
     for document in documents:
-
-        document_words = set(
-            document["text"].lower().split()
-        )
-
-
-        score = len(
-            question_words.intersection(
-                document_words
-            )
-        )
-
-
+        document_words = set(document["text"].lower().split())
+        score = len(question_words.intersection(document_words))
         if score > best_score:
-
             best_score = score
-
             best_document = document
-
-
     if best_document is None:
-
         return ""
-
-
-    return (
-
-        f"Document: {best_document['name']}\n\n"
-
-        f"{best_document['text'][:4000]}"
-
-    )
-
+    return f"Document: {best_document['name']}\n\n{best_document['text'][:4000]}"
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
 with st.sidebar:
+    st.markdown("## 💬 Conversations")
+    st.markdown("---")
 
-    st.header("💬 Chats")
-
-
-    # --------------------------------------------------------
-    # NEW CHAT
-    # --------------------------------------------------------
-
-    if st.button(
-        "➕ New Chat",
-        use_container_width=True
-    ):
-
+    if st.button("➕  New Chat", use_container_width=True):
         create_new_chat()
-
         st.rerun()
 
-
-    st.divider()
-
-
-    # --------------------------------------------------------
-    # CHAT LIST
-    # --------------------------------------------------------
-
-    chat_names = list(
-        st.session_state.chats.keys()
-    )
-
-
+    st.markdown("### 📚 Your Chats")
+    chat_names = list(st.session_state.chats.keys())
     for chat_name in chat_names:
-
-        is_current = (
-
-            chat_name
-            == st.session_state.current_chat
-
-        )
-
-
-        if is_current:
-
-            button_text = "▶ " + chat_name
-
-        else:
-
-            button_text = chat_name
-
-
-        if st.button(
-            button_text,
-            key=f"chat_{chat_name}",
-            use_container_width=True
-        ):
-
-            st.session_state.current_chat = (
-                chat_name
-            )
-
+        is_current = chat_name == st.session_state.current_chat
+        button_text = ("▶  " if is_current else "💬  ") + chat_name
+        if st.button(button_text, key=f"chat_{chat_name}", use_container_width=True):
+            st.session_state.current_chat = chat_name
             st.rerun()
 
+    st.markdown("---")
 
-    st.divider()
-
-
-    # --------------------------------------------------------
-    # DELETE CURRENT CHAT
-    # --------------------------------------------------------
-
-    if st.button(
-        "🗑️ Delete Current Chat",
-        use_container_width=True
-    ):
-
-        current = (
-            st.session_state.current_chat
-        )
-
-
+    if st.button("🗑️  Delete Current Chat", use_container_width=True):
+        current = st.session_state.current_chat
         if len(st.session_state.chats) > 1:
-
             del st.session_state.chats[current]
-
-
-            st.session_state.current_chat = (
-                list(
-                    st.session_state.chats.keys()
-                )[0]
-            )
-
-
+            st.session_state.current_chat = list(st.session_state.chats.keys())[0]
         else:
-
             st.session_state.chats[current] = []
-
-
-        # IMPORTANT:
-        # Save BEFORE rerun.
-
         save_chats()
-
         st.rerun()
-        st.divider()
 
-st.header("ℹ️ About")
+    st.markdown("---")
 
-st.write(
-    "My AI Chatbot is an AI assistant designed "
-    "to answer questions, maintain multiple "
-    "conversations, and analyze PDF documents."
-)
-
-st.write("**Created by:** Faizi")
-
-st.write(
-    "**Features:** AI chat, multiple chats, "
-    "chat switching, chat history, and PDF analysis."
-)
-
+    # About section
+    st.markdown("### ℹ️ About")
+    st.markdown(
+        "**Faizi AI Chatbot** — your personal AI assistant "
+        "for Q&A, multi-chat, and PDF analysis."
+    )
+    st.markdown("**Created by:** Faizan Ali")
+    st.markdown("**Powered by:** ⚡ Groq")
+    st.markdown(f"**Model:** `{MODEL_NAME}`")
 
 # ============================================================
-# CURRENT CHAT
+# MAIN PAGE
 # ============================================================
 
-current_chat = (
-    st.session_state.current_chat
+current_chat = st.session_state.current_chat
+messages = st.session_state.chats[current_chat]
+
+st.markdown('<h1 class="main-title">🤖 Faizi AI Chatbot</h1>', unsafe_allow_html=True)
+st.markdown(
+    f'<p class="subtitle">⚡ Powered by Groq · Current chat: <b>{current_chat}</b></p>',
+    unsafe_allow_html=True
 )
-
-
-messages = (
-    st.session_state.chats[current_chat]
-)
-
-
-# ============================================================
-# PAGE TITLE
-# ============================================================
-
-st.title("🤖 My AI Chatbot")
-
-st.caption(
-    f"Current chat: {current_chat}"
-)
-
 
 # ============================================================
 # DISPLAY CHAT HISTORY
 # ============================================================
 
 for message in messages:
-
-    with st.chat_message(
-        message["role"]
-    ):
-
-        st.markdown(
-            message["content"]
-        )
-
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 # ============================================================
 # CHAT INPUT
 # ============================================================
 
-prompt = st.chat_input(
-    "Ask me anything..."
-)
-
+prompt = st.chat_input("✨ Ask me anything...")
 
 # ============================================================
 # PROCESS MESSAGE
 # ============================================================
 
 if prompt:
+    # Add user message
+    messages.append({"role": "user", "content": prompt})
 
-
-    # --------------------------------------------------------
-    # USER MESSAGE
-    # --------------------------------------------------------
-
-    messages.append({
-
-        "role": "user",
-
-        "content": prompt
-
-    })
-
-
-    # --------------------------------------------------------
-    # AUTOMATIC CHAT TITLE
-    # --------------------------------------------------------
-
+    # Auto-title the chat
     if current_chat.startswith("New Chat"):
-
         words = prompt.split()
-
-
-        if len(words) > 6:
-
-            title = (
-                " ".join(words[:6])
-                + "..."
-            )
-
-        else:
-
-            title = prompt
-
-
+        title = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
         title = title[:40]
 
-
-        # Prevent duplicate chat names
-
         original_title = title
-
         number = 2
-
-
-        while (
-            title in st.session_state.chats
-            and title != current_chat
-        ):
-
-            title = (
-                f"{original_title} {number}"
-            )
-
+        while title in st.session_state.chats and title != current_chat:
+            title = f"{original_title} {number}"
             number += 1
 
-
         if title != current_chat:
-
-            st.session_state.chats[title] = (
-                messages
-            )
-
-
-            del st.session_state.chats[
-                current_chat
-            ]
-
-
-            st.session_state.current_chat = (
-                title
-            )
-
-
+            st.session_state.chats[title] = messages
+            del st.session_state.chats[current_chat]
+            st.session_state.current_chat = title
             current_chat = title
-
-            messages = (
-                st.session_state.chats[title]
-            )
-
-
+            messages = st.session_state.chats[title]
             save_chats()
 
-
-    # --------------------------------------------------------
-    # DISPLAY USER MESSAGE
-    # --------------------------------------------------------
-
+    # Display user message
     with st.chat_message("user"):
-
         st.markdown(prompt)
 
-
-    # --------------------------------------------------------
-    # AI RESPONSE
-    # --------------------------------------------------------
-
+    # AI response
     with st.chat_message("assistant"):
-
-        with st.spinner("Thinking..."):
-
+        with st.spinner("⚡ Thinking..."):
             try:
+                recent_messages = messages[-4:]
+                context = find_relevant_context(prompt)
 
+                system_prompt = """You are a helpful AI assistant.
 
-                # ----------------------------------------------
-                # KEEP RECENT CONVERSATION
-                # ----------------------------------------------
-
-                recent_messages = (
-                    messages[-4:]
-                )
-
-
-                # ----------------------------------------------
-                # PDF CONTEXT
-                # ----------------------------------------------
-
-                context = (
-                    find_relevant_context(prompt)
-                )
-
-
-                # ----------------------------------------------
-                # SYSTEM PROMPT
-                # ----------------------------------------------
-
-                system_prompt = """
-
-You are a helpful AI assistant.
-
-Answer the user's question clearly
-and directly.
-
+Answer the user's question clearly and directly.
 For simple questions, answer directly.
-
-For complicated questions,
-explain step by step.
-
-Do not unnecessarily repeat
-the user's question.
-
-If relevant document information
-is provided, use it when answering.
-
+For complicated questions, explain step by step.
+Do not unnecessarily repeat the user's question.
+If relevant document information is provided, use it when answering.
 Do not invent information from documents.
-
-If the answer cannot be found in
-the document, say that clearly.
-
-Do not reveal internal reasoning.
-"""
-
+If the answer cannot be found in the document, say that clearly.
+Do not reveal internal reasoning."""
 
                 if context:
+                    system_prompt += f"\n\nRelevant document information:\n\n{context}"
 
-                    system_prompt += f"""
+                api_messages = [{"role": "system", "content": system_prompt}]
+                api_messages.extend(recent_messages)
 
-Relevant document information:
-
-{context}
-"""
-
-
-                # ----------------------------------------------
-                # API MESSAGES
-                # ----------------------------------------------
-
-                api_messages = [
-
-                    {
-
-                        "role": "system",
-
-                        "content": system_prompt
-
-                    }
-
-                ]
-
-
-                api_messages.extend(
-                    recent_messages
-                )
-
-
-                # ----------------------------------------------
-                # HUGGING FACE REQUEST
-                # ----------------------------------------------
-
-                response = client.chat_completion(
-
+                # Groq API call
+                response = client.chat.completions.create(
                     model=MODEL_NAME,
-
                     messages=api_messages,
-
-                    max_tokens=7000,
-
+                    max_tokens=2048,
                     temperature=0.7
-
                 )
 
-
-                # ----------------------------------------------
-                # GET FINAL ANSWER
-                # ----------------------------------------------
-
-                answer = None
-
-
-                if response.choices:
-
-                    message = (
-                        response.choices[0].message
-                    )
-
-
-                    answer = getattr(
-                        message,
-                        "content",
-                        None
-                    )
-
-
-                # ----------------------------------------------
-                # CHECK ANSWER
-                # ----------------------------------------------
+                answer = response.choices[0].message.content
 
                 if not answer:
-
-                    answer = (
-
-                        "I couldn't generate "
-                        "a final answer. "
-                        "Please try again."
-
-                    )
-
-
-                # ----------------------------------------------
-                # DISPLAY ANSWER
-                # ----------------------------------------------
+                    answer = "I couldn't generate a final answer. Please try again."
 
                 st.markdown(answer)
-
-
-                # ----------------------------------------------
-                # SAVE ANSWER
-                # ----------------------------------------------
-
-                messages.append({
-
-                    "role": "assistant",
-
-                    "content": answer
-
-                })
-
-
-                # ----------------------------------------------
-                # SAVE ENTIRE CHAT
-                # ----------------------------------------------
-
+                messages.append({"role": "assistant", "content": answer})
                 save_chats()
 
-
             except Exception as e:
-
-                st.error(
-                    "The AI could not generate a response."
-                )
-
-                st.code(
-                    str(e)
-                )
-
+                st.error("⚠️ The AI could not generate a response.")
+                st.code(str(e))
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.divider()
-
-st.caption(
-    "🤖 My AI Chatbot"
+st.markdown("---")
+st.markdown(
+    '<p style="text-align:center; color:#667eea; font-size:0.85rem;">'
+    '🤖 Faizi AI Chatbot · Built with Streamlit & Groq'
+    '</p>',
+    unsafe_allow_html=True
 )
