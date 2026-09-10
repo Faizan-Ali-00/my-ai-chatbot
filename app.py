@@ -130,7 +130,7 @@ if not GROQ_API_KEY:
 try:
     MODEL_NAME = st.secrets["MODEL_NAME"]
 except Exception:
-    MODEL_NAME = "qwen/qwen3-32b"  # Qwen 32B on Groq — fast & smart
+    MODEL_NAME = "qwen/qwen3.6-27b"
 
 # ============================================================
 # FILES
