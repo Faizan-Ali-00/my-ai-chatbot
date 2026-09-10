@@ -12,8 +12,8 @@ import re
 # ============================================================
 
 st.set_page_config(
-    page_title="Faizi AI Chatbot",
-    page_icon="🤖",
+    page_title="Nexus AI",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -97,7 +97,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CLEAN RESPONSE — Aggressive stripping
+# CLEAN RESPONSE
 # ============================================================
 
 META_STARTERS = [
@@ -107,19 +107,15 @@ META_STARTERS = [
     "Draft Response:", "Final decision:",
     "Let's ", "Actually, ", "Correction:",
     "Alternative:", "Refine:", "Check constraints",
-    "Check constraints:", "Final Output",
+    "Final Output",
 ]
 
 def clean_response(text):
-    """Strip thinking blocks and meta reasoning from text."""
     if not text:
         return ""
-
-    # 1. Remove <think>...</think> blocks
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     cleaned = re.sub(r"</?think>", "", cleaned)
 
-    # 2. Remove meta reasoning lines
     lines = cleaned.split("\n")
     filtered = []
     for line in lines:
@@ -129,7 +125,6 @@ def clean_response(text):
         filtered.append(line)
     cleaned = "\n".join(filtered)
 
-    # 3. If everything was stripped, take the last paragraph from original
     if not cleaned.strip() and text:
         parts = text.strip().split("\n\n")
         cleaned = parts[-1] if parts else ""
@@ -138,7 +133,7 @@ def clean_response(text):
     return cleaned.strip()
 
 # ============================================================
-# GROQ API KEY
+# API KEY
 # ============================================================
 
 try:
@@ -147,7 +142,7 @@ except Exception:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    st.error("🔑 **Groq API key not found.**")
+    st.error("🔑 **API key not found.**")
     st.info("Add `GROQ_API_KEY` to `.env` or Streamlit Secrets.")
     st.stop()
 
@@ -169,7 +164,7 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 HISTORY_FILE = Path("chat_history.json")
 
 # ============================================================
-# GROQ CLIENT
+# CLIENT
 # ============================================================
 
 @st.cache_resource
@@ -179,7 +174,7 @@ def get_client():
 client = get_client()
 
 # ============================================================
-# LOAD / SAVE CHATS (with cleanup of old messages)
+# LOAD / SAVE CHATS
 # ============================================================
 
 def load_chats():
@@ -188,16 +183,12 @@ def load_chats():
     try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as file:
             chats = json.load(file)
-
         if not chats:
             return {"New Chat": []}
-
-        # Clean old assistant messages on load
         for chat_name, msgs in chats.items():
             for msg in msgs:
                 if msg.get("role") == "assistant":
                     msg["content"] = clean_response(msg.get("content", ""))
-
         return chats
     except Exception:
         return {"New Chat": []}
@@ -309,18 +300,6 @@ with st.sidebar:
         save_chats()
         st.rerun()
 
-    st.markdown("---")
-
-    st.markdown("### ℹ️ About")
-    st.markdown(
-        "**Faizi AI Chatbot** — your smart assistant for "
-        "Q&A, coding, math, and PDF analysis."
-    )
-    st.markdown("**Created by:** Faizan Ali")
-    st.markdown("**Powered by:** ⚡ Groq")
-    st.markdown(f"**Model:** `{MODEL_NAME}`")
-    st.markdown(f"**📅 Today:** {CURRENT_DATE}")
-
 # ============================================================
 # MAIN PAGE
 # ============================================================
@@ -328,9 +307,9 @@ with st.sidebar:
 current_chat = st.session_state.current_chat
 messages = st.session_state.chats[current_chat]
 
-st.markdown('<h1 class="main-title">🤖 Faizi AI Chatbot</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-title">✨ Nexus AI</h1>', unsafe_allow_html=True)
 st.markdown(
-    f'<p class="subtitle">⚡ Powered by Qwen on Groq · Current chat: <b>{current_chat}</b></p>',
+    '<p class="subtitle">Your intelligent assistant · Ask anything</p>',
     unsafe_allow_html=True
 )
 
@@ -358,7 +337,6 @@ prompt = st.chat_input("✨ Ask me anything...")
 if prompt:
     messages.append({"role": "user", "content": prompt})
 
-    # Auto-title
     if current_chat.startswith("New Chat"):
         words = prompt.split()
         title = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
@@ -382,29 +360,31 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("⚡ Thinking..."):
+        with st.spinner("✨ Thinking..."):
             try:
                 recent_messages = messages[-4:]
                 context = find_relevant_context(prompt)
 
-                system_prompt = f"""You are Faizi AI, a smart, friendly, and helpful assistant.
+                system_prompt = f"""You are Nexus AI, a smart, friendly, and helpful assistant.
 
 Today's date is {CURRENT_DATE}.
 
 YOUR ROLE:
-- Answer ANY question the user asks — general knowledge, math, coding, science, history, advice, writing, translation, etc.
+- Answer ANY question the user asks — general knowledge, math, coding, science, history, sports, advice, writing, translation, etc.
 - Be confident and helpful. If you know something, share it.
-- If you truly don't know something (like live weather or breaking news), say so briefly and offer what you can.
+- If you truly don't know something (like live weather or breaking news), say so briefly.
 - Never refuse a reasonable question.
 
 RESPONSE STYLE:
 - Respond ONLY with the final answer.
 - Do NOT show reasoning, thinking, or step-by-step analysis.
 - Do NOT use phrases like "Let me think", "Okay", "Wait", "Hmm", "The user is asking".
+- Do NOT use "Correction:" or self-correct mid-answer.
 - Do NOT reference "the system prompt" or "the instructions".
 - Be direct, clear, and natural.
 
 For simple questions: answer in 1-2 sentences.
+For list questions: give a clean numbered list, no corrections.
 For complex topics: give a clear, structured explanation.
 For coding questions: provide clean, working code with brief explanation.
 For math: show the calculation and final answer.
@@ -444,7 +424,7 @@ If document info is provided below, use it. Do not invent facts from documents."
                 save_chats()
 
             except Exception as e:
-                st.error("⚠️ The AI could not generate a response.")
+                st.error("⚠️ Something went wrong. Please try again.")
                 st.code(str(e))
 
 # ============================================================
@@ -454,7 +434,7 @@ If document info is provided below, use it. Do not invent facts from documents."
 st.markdown("---")
 st.markdown(
     '<p style="text-align:center; color:#667eea; font-size:0.85rem;">'
-    '🤖 Faizi AI Chatbot · Built with Streamlit & Qwen on Groq'
+    '✨ Nexus AI'
     '</p>',
     unsafe_allow_html=True
 )
