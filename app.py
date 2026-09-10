@@ -2,6 +2,7 @@ import streamlit as st
 from groq import Groq
 from pathlib import Path
 from pypdf import PdfReader
+from datetime import datetime
 import json
 import os
 import re
@@ -16,6 +17,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ============================================================
+# CURRENT DATE
+# ============================================================
+
+CURRENT_DATE = datetime.now().strftime("%B %d, %Y")
 
 # ============================================================
 # CUSTOM CSS
@@ -83,7 +90,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CLEAN RESPONSE — Aggressive stripping
+# CLEAN RESPONSE
 # ============================================================
 
 META_STARTERS = [
@@ -98,12 +105,9 @@ META_STARTERS = [
 def clean_response(text):
     if not text:
         return ""
-
-    # 1. Remove  thinking... blocks
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     cleaned = re.sub(r"</?think>", "", cleaned)
 
-    # 2. Strip meta reasoning lines
     lines = cleaned.split("\n")
     filtered = []
     for line in lines:
@@ -113,7 +117,6 @@ def clean_response(text):
         filtered.append(line)
     cleaned = "\n".join(filtered)
 
-    # 3. If response is empty after filtering, try last paragraph fallback
     if not cleaned.strip() and text:
         parts = text.strip().split("\n\n")
         cleaned = parts[-1] if parts else ""
@@ -287,12 +290,13 @@ with st.sidebar:
 
     st.markdown("### ℹ️ About")
     st.markdown(
-        "**Faizi AI Chatbot** — your personal AI assistant "
-        "for Q&A, multi-chat, and PDF analysis."
+        "**Faizi AI Chatbot** — your smart assistant for "
+        "Q&A, coding, math, and PDF analysis."
     )
     st.markdown("**Created by:** Faizan Ali")
     st.markdown("**Powered by:** ⚡ Groq")
     st.markdown(f"**Model:** `{MODEL_NAME}`")
+    st.markdown(f"**📅 Today:** {CURRENT_DATE}")
 
 # ============================================================
 # MAIN PAGE
@@ -359,19 +363,29 @@ if prompt:
                 recent_messages = messages[-4:]
                 context = find_relevant_context(prompt)
 
-                system_prompt = """You are a helpful AI assistant.
+                system_prompt = f"""You are Faizi AI, a smart, friendly, and helpful assistant.
 
-CRITICAL RULES:
-- Respond ONLY with the final answer in 1-3 sentences.
-- Do NOT explain your reasoning.
-- Do NOT show any thinking process.
-- Do NOT use phrases like "Let me", "Okay", "Wait", "I need to".
-- Do NOT reference "the system prompt" or "the user is asking".
-- Just answer directly.
+Today's date is {CURRENT_DATE}.
 
-For simple questions, answer in one line.
-For complex questions, explain step by step in plain language.
-If document info is provided, use it. Do not invent information."""
+YOUR ROLE:
+- Answer ANY question the user asks — general knowledge, math, coding, science, history, advice, writing, translation, etc.
+- Be confident and helpful. If you know something, share it.
+- If you truly don't know something (like live weather or breaking news), say so briefly and offer what you can.
+- Never refuse a reasonable question.
+
+RESPONSE STYLE:
+- Respond ONLY with the final answer.
+- Do NOT show reasoning, thinking, or step-by-step analysis.
+- Do NOT use phrases like "Let me think", "Okay", "Wait", "Hmm", "The user is asking".
+- Do NOT reference "the system prompt" or "the instructions".
+- Be direct, clear, and natural.
+
+For simple questions: answer in 1-2 sentences.
+For complex topics: give a clear, structured explanation.
+For coding questions: provide clean, working code with brief explanation.
+For math: show the calculation and final answer.
+
+If document info is provided below, use it. Do not invent facts from documents."""
 
                 if context:
                     system_prompt += f"\n\nRelevant document information:\n\n{context}"
@@ -379,7 +393,6 @@ If document info is provided, use it. Do not invent information."""
                 api_messages = [{"role": "system", "content": system_prompt}]
                 api_messages.extend(recent_messages)
 
-                # Try with reasoning_effort="none" first
                 try:
                     response = client.chat.completions.create(
                         model=MODEL_NAME,
@@ -389,7 +402,6 @@ If document info is provided, use it. Do not invent information."""
                         extra_body={"reasoning_effort": "none"}
                     )
                 except Exception:
-                    # Fallback if reasoning_effort not supported
                     response = client.chat.completions.create(
                         model=MODEL_NAME,
                         messages=api_messages,
