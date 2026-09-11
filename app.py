@@ -1,11 +1,15 @@
 import streamlit as st
-from groq import Groq
 from pathlib import Path
 from pypdf import PdfReader
 from datetime import datetime
 import json
 import os
 import re
+import requests
+
+# --- Provider SDKs ---
+from cerebras.cloud.sdk import Cerebras
+from mistralai import Mistral
 
 # ============================================================
 # PAGE CONFIG
@@ -133,27 +137,40 @@ def clean_response(text):
     return cleaned.strip()
 
 # ============================================================
-# API KEY
+# API KEYS
 # ============================================================
 
-try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-except Exception:
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+def _get_secret(name):
+    try:
+        return st.secrets[name]
+    except Exception:
+        return os.getenv(name)
 
-if not GROQ_API_KEY:
-    st.error("🔑 **API key not found.**")
-    st.info("Add `GROQ_API_KEY` to `.env` or Streamlit Secrets.")
+CEREBRAS_API_KEY = _get_secret("CEREBRAS_API_KEY")
+MISTRAL_API_KEY = _get_secret("MISTRAL_API_KEY")
+CLOUDFLARE_API_KEY = _get_secret("CLOUDFLARE_API_KEY")
+CLOUDFLARE_ACCOUNT_ID = _get_secret("CLOUDFLARE_ACCOUNT_ID")
+OPENROUTER_API_KEY = _get_secret("OPENROUTER_API_KEY")
+
+if not any([CEREBRAS_API_KEY, MISTRAL_API_KEY, CLOUDFLARE_API_KEY, OPENROUTER_API_KEY]):
+    st.error("🔑 **No AI provider keys found.**")
+    st.info(
+        "Add at least one to Streamlit Secrets:\n\n"
+        "```toml\n"
+        "CEREBRAS_API_KEY = \"csk-...\"\n"
+        "MISTRAL_API_KEY = \"...\"\n"
+        "CLOUDFLARE_API_KEY = \"...\"\n"
+        "CLOUDFLARE_ACCOUNT_ID = \"...\"\n"
+        "OPENROUTER_API_KEY = \"sk-or-v1-...\"\n"
+        "```"
+    )
     st.stop()
 
 # ============================================================
 # MODEL
 # ============================================================
 
-try:
-    MODEL_NAME = st.secrets["MODEL_NAME"]
-except Exception:
-    MODEL_NAME = "qwen/qwen3.6-27b"
+MODEL_NAME = "llama3.1-8b"  # Cerebras default
 
 # ============================================================
 # FILES
@@ -164,14 +181,105 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 HISTORY_FILE = Path("chat_history.json")
 
 # ============================================================
-# CLIENT
+# PROVIDERS
 # ============================================================
 
-@st.cache_resource
-def get_client():
-    return Groq(api_key=GROQ_API_KEY)
+cerebras_client = Cerebras(api_key=CEREBRAS_API_KEY) if CEREBRAS_API_KEY else None
+mistral_client = Mistral(api_key=MISTRAL_API_KEY) if MISTRAL_API_KEY else None
 
-client = get_client()
+
+# ---------- CEREBRAS ----------
+def _chat_cerebras(messages, max_tokens, temperature):
+    response = cerebras_client.chat.completions.create(
+        model="llama3.1-8b",
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content
+
+
+# ---------- MISTRAL ----------
+def _chat_mistral(messages, max_tokens, temperature):
+    response = mistral_client.chat.complete(
+        model="mistral-small-latest",
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content
+
+
+# ---------- CLOUDFLARE WORKERS AI ----------
+def _chat_cloudflare(messages, max_tokens, temperature):
+    if not CLOUDFLARE_API_KEY or not CLOUDFLARE_ACCOUNT_ID:
+        raise Exception("Cloudflare not configured")
+
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/"
+        f"{CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct"
+    )
+    resp = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["result"]["response"]
+
+
+# ---------- OPENROUTER ----------
+def _chat_openrouter(messages, max_tokens, temperature):
+    resp = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def chat_with_fallback(messages, max_tokens=1000, temperature=0.3):
+    """Try each provider in order until one succeeds."""
+    providers = []
+    if cerebras_client:
+        providers.append(("Cerebras", _chat_cerebras))
+    if mistral_client:
+        providers.append(("Mistral", _chat_mistral))
+    if CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID:
+        providers.append(("Cloudflare", _chat_cloudflare))
+    if OPENROUTER_API_KEY:
+        providers.append(("OpenRouter", _chat_openrouter))
+
+    last_error = None
+    for name, func in providers:
+        try:
+            result = func(messages, max_tokens, temperature)
+            if result and result.strip():
+                return result, name
+        except Exception as e:
+            last_error = f"{name}: {e}"
+            continue
+
+    raise Exception(f"All providers failed. Last error: {last_error}")
 
 # ============================================================
 # LOAD / SAVE CHATS
@@ -300,6 +408,16 @@ with st.sidebar:
         save_chats()
         st.rerun()
 
+    st.markdown("---")
+
+    # Active providers
+    active = []
+    if CEREBRAS_API_KEY: active.append("Cerebras")
+    if MISTRAL_API_KEY: active.append("Mistral")
+    if CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID: active.append("Cloudflare")
+    if OPENROUTER_API_KEY: active.append("OpenRouter")
+    st.caption(f"🔗 Providers: {', '.join(active) if active else 'None'}")
+
 # ============================================================
 # MAIN PAGE
 # ============================================================
@@ -380,7 +498,6 @@ RESPONSE STYLE:
 - Do NOT show reasoning, thinking, or step-by-step analysis.
 - Do NOT use phrases like "Let me think", "Okay", "Wait", "Hmm", "The user is asking".
 - Do NOT use "Correction:" or self-correct mid-answer.
-- Do NOT reference "the system prompt" or "the instructions".
 - Be direct, clear, and natural.
 
 For simple questions: answer in 1-2 sentences.
@@ -397,34 +514,23 @@ If document info is provided below, use it. Do not invent facts from documents."
                 api_messages = [{"role": "system", "content": system_prompt}]
                 api_messages.extend(recent_messages)
 
-                try:
-                    response = client.chat.completions.create(
-                        model=MODEL_NAME,
-                        messages=api_messages,
-                        max_tokens=1000,
-                        temperature=0.3,
-                        extra_body={"reasoning_effort": "none"}
-                    )
-                except Exception:
-                    response = client.chat.completions.create(
-                        model=MODEL_NAME,
-                        messages=api_messages,
-                        max_tokens=1000,
-                        temperature=0.2
-                    )
-
-                answer = response.choices[0].message.content
+                answer, used_provider = chat_with_fallback(
+                    api_messages,
+                    max_tokens=1000,
+                    temperature=0.3,
+                )
                 answer = clean_response(answer)
 
                 if not answer:
                     answer = "I couldn't generate a final answer. Please try again."
 
                 st.markdown(answer)
+                st.caption(f"⚡ Response via {used_provider}")
                 messages.append({"role": "assistant", "content": answer})
                 save_chats()
 
             except Exception as e:
-                st.error("⚠️ Something went wrong. Please try again.")
+                st.error("⚠️ All providers failed. Please try again.")
                 st.code(str(e))
 
 # ============================================================
@@ -434,7 +540,7 @@ If document info is provided below, use it. Do not invent facts from documents."
 st.markdown("---")
 st.markdown(
     '<p style="text-align:center; color:#667eea; font-size:0.85rem;">'
-    '✨ Nexus AI'
+    '✨ Nexus AI · Multi-provider fallback'
     '</p>',
     unsafe_allow_html=True
 )
