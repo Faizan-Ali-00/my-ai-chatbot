@@ -9,7 +9,6 @@ import requests
 
 # --- Provider SDKs ---
 from cerebras.cloud.sdk import Cerebras
-from mistralai import Mistral
 
 # ============================================================
 # PAGE CONFIG
@@ -147,30 +146,22 @@ def _get_secret(name):
         return os.getenv(name)
 
 CEREBRAS_API_KEY = _get_secret("CEREBRAS_API_KEY")
-MISTRAL_API_KEY = _get_secret("MISTRAL_API_KEY")
 CLOUDFLARE_API_KEY = _get_secret("CLOUDFLARE_API_KEY")
 CLOUDFLARE_ACCOUNT_ID = _get_secret("CLOUDFLARE_ACCOUNT_ID")
 OPENROUTER_API_KEY = _get_secret("OPENROUTER_API_KEY")
 
-if not any([CEREBRAS_API_KEY, MISTRAL_API_KEY, CLOUDFLARE_API_KEY, OPENROUTER_API_KEY]):
+if not any([CEREBRAS_API_KEY, CLOUDFLARE_API_KEY, OPENROUTER_API_KEY]):
     st.error("🔑 **No AI provider keys found.**")
     st.info(
         "Add at least one to Streamlit Secrets:\n\n"
         "```toml\n"
         "CEREBRAS_API_KEY = \"csk-...\"\n"
-        "MISTRAL_API_KEY = \"...\"\n"
         "CLOUDFLARE_API_KEY = \"...\"\n"
         "CLOUDFLARE_ACCOUNT_ID = \"...\"\n"
         "OPENROUTER_API_KEY = \"sk-or-v1-...\"\n"
         "```"
     )
     st.stop()
-
-# ============================================================
-# MODEL
-# ============================================================
-
-MODEL_NAME = "llama3.1-8b"  # Cerebras default
 
 # ============================================================
 # FILES
@@ -185,24 +176,12 @@ HISTORY_FILE = Path("chat_history.json")
 # ============================================================
 
 cerebras_client = Cerebras(api_key=CEREBRAS_API_KEY) if CEREBRAS_API_KEY else None
-mistral_client = Mistral(api_key=MISTRAL_API_KEY) if MISTRAL_API_KEY else None
 
 
 # ---------- CEREBRAS ----------
 def _chat_cerebras(messages, max_tokens, temperature):
     response = cerebras_client.chat.completions.create(
         model="llama3.1-8b",
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return response.choices[0].message.content
-
-
-# ---------- MISTRAL ----------
-def _chat_mistral(messages, max_tokens, temperature):
-    response = mistral_client.chat.complete(
-        model="mistral-small-latest",
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
@@ -262,8 +241,6 @@ def chat_with_fallback(messages, max_tokens=1000, temperature=0.3):
     providers = []
     if cerebras_client:
         providers.append(("Cerebras", _chat_cerebras))
-    if mistral_client:
-        providers.append(("Mistral", _chat_mistral))
     if CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID:
         providers.append(("Cloudflare", _chat_cloudflare))
     if OPENROUTER_API_KEY:
@@ -413,7 +390,6 @@ with st.sidebar:
     # Active providers
     active = []
     if CEREBRAS_API_KEY: active.append("Cerebras")
-    if MISTRAL_API_KEY: active.append("Mistral")
     if CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID: active.append("Cloudflare")
     if OPENROUTER_API_KEY: active.append("OpenRouter")
     st.caption(f"🔗 Providers: {', '.join(active) if active else 'None'}")
