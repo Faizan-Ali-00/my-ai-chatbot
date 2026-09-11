@@ -1,0 +1,22 @@
+<svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="nucleusGrad" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#c9b8ff"/>
+      <stop offset="45%" stop-color="#8b5cf6"/>
+      <stop offset="80%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#2b1256"/>
+    </radialGradient>
+  </defs>
+  <rect width="240" height="240" rx="48" fill="#0b0715"/>
+  <g transform="translate(120, 120)">
+    <ellipse cx="0" cy="0" rx="80" ry="32" fill="none" stroke="#8b5cf6" stroke-width="3" stroke-opacity="0.55" transform="rotate(45)"/>
+    <ellipse cx="0" cy="0" rx="80" ry="32" fill="none" stroke="#a78bff" stroke-width="3" stroke-opacity="0.55" transform="rotate(-45)"/>
+    <ellipse cx="0" cy="0" rx="80" ry="32" fill="none" stroke="#C77DFF" stroke-width="3" stroke-opacity="0.5"/>
+    <circle cx="56" cy="56" r="6" fill="#E0C3FF"/>
+    <circle cx="56" cy="-56" r="6" fill="#E0C3FF"/>
+    <circle cx="80" cy="0" r="6" fill="#E0C3FF"/>
+    <circle cx="0" cy="0" r="34" fill="#6d28d9" opacity="0.35"/>
+    <circle cx="0" cy="0" r="30" fill="url(#nucleusGrad)"/>
+    <circle cx="0" cy="0" r="21" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+  </g>
+</svg>
