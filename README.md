@@ -1,6 +1,10 @@
+<div align="center">
+  <img src="logos/nexus.svg" width="360" alt="Nexus AI Logo" />
+</div>
+
 # ⚛️ Nexus AI
 
-A beautiful, multi-provider AI chatbot with an animated atom logo, PDF analysis, and a resilient provider fallback chain.
+A beautiful, multi-provider AI chatbot with an animated atom logo and a resilient provider fallback chain.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)
@@ -11,19 +15,17 @@ A beautiful, multi-provider AI chatbot with an animated atom logo, PDF analysis,
 
 ## 📖 Overview
 
-Nexus AI is a modern, intelligent assistant that answers any question — general knowledge, math, coding, science, history, writing, translation — while also reading and analyzing PDF documents. It uses a multi-provider fallback architecture so it never goes down: if one AI provider runs out of credits, Nexus automatically switches to the next.
+Nexus AI is a modern, intelligent assistant that answers any question — general knowledge, math, coding, science, history, writing, translation. It uses a multi-provider fallback architecture so it never goes down: if one AI provider runs out of credits, Nexus automatically switches to the next.
 
 ## ✨ Features
 
 - 💬 Chat with an AI assistant
 - ⚛️ Animated atom logo with glowing nucleus
-- 📄 Upload PDF, TXT, and DOCX documents
-- 🔍 Semantic document search using keyword matching
-- 📚 Ask questions about uploaded documents
 - 💾 Chat history saved locally
 - 🔗 Multi-provider fallback (Cerebras → Cloudflare → OpenRouter)
 - 🎨 Beautiful purple gradient theme
 - 📊 Shows which provider answered each message
+- 📚 Multiple chats in the sidebar
 
 ## 🛠️ Tech Stack
 
@@ -56,7 +58,8 @@ my-ai-chatbot/
 ├── app.py                # Main Streamlit app
 ├── requirements.txt      # Python dependencies
 ├── chat_history.json     # Auto-generated — chat history
-├── documents/            # Uploaded PDFs (auto-created)
+├── logos/
+│   └── nexus.svg         # Nexus AI logo (used in README and app)
 ├── LICENSE               # MIT License
 ├── .gitignore            # Git ignore rules
 └── README.md
@@ -142,10 +145,9 @@ OPENROUTER_API_KEY = "sk-or-v1-your_openrouter_key_here"
 ## ▶️ Usage
 
 1. Type a message to chat with the assistant
-2. Upload a PDF, TXT, or DOCX file
-3. Ask questions about the uploaded document
-4. Chat history is saved locally
-5. Each response shows which provider answered
+2. Chat history is saved locally
+3. Each response shows which provider answered
+4. Create multiple chats from the sidebar
 
 ## 🎨 UI Highlights
 
