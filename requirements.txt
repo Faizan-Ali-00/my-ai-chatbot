@@ -1,4 +1,6 @@
 streamlit
-groq
+cerebras-cloud-sdk
+mistralai
 pypdf
 python-dotenv
+requests
