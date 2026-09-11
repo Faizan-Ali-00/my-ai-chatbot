@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import os
 import re
+import base64
 import requests
 
 # --- Provider SDKs ---
@@ -16,10 +17,161 @@ from cerebras.cloud.sdk import Cerebras
 
 st.set_page_config(
     page_title="Nexus AI",
-    page_icon="✨",
+    page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ============================================================
+# LOGO — Nexus Atom
+# ============================================================
+
+LOGO_SVG = """
+<svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="nucleusGrad" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#c9b8ff"/>
+      <stop offset="45%" stop-color="#8b5cf6"/>
+      <stop offset="80%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#2b1256"/>
+    </radialGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8A6BFF"/>
+      <stop offset="50%" stop-color="#C77DFF"/>
+      <stop offset="100%" stop-color="#6BD6FF"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="720" height="240" fill="#0b0715" rx="24"/>
+
+  <!-- Atom group -->
+  <g transform="translate(120, 120)">
+
+    <!-- Orbit 1 — diagonal -->
+    <ellipse cx="0" cy="0" rx="70" ry="28"
+             fill="none" stroke="#8b5cf6" stroke-width="2.5"
+             stroke-opacity="0.55"
+             transform="rotate(45)"/>
+
+    <!-- Orbit 2 — opposite diagonal -->
+    <ellipse cx="0" cy="0" rx="70" ry="28"
+             fill="none" stroke="#a78bff" stroke-width="2.5"
+             stroke-opacity="0.55"
+             transform="rotate(-45)"/>
+
+    <!-- Orbit 3 — horizontal -->
+    <ellipse cx="0" cy="0" rx="70" ry="28"
+             fill="none" stroke="#C77DFF" stroke-width="2.5"
+             stroke-opacity="0.5"/>
+
+    <!-- Electrons (small dots on orbits) -->
+    <circle cx="49" cy="49" r="4.5" fill="#E0C3FF" filter="url(#softGlow)"/>
+    <circle cx="49" cy="-49" r="4.5" fill="#E0C3FF" filter="url(#softGlow)"/>
+    <circle cx="70" cy="0" r="4.5" fill="#E0C3FF" filter="url(#softGlow)"/>
+
+    <!-- Glowing nucleus -->
+    <g filter="url(#glow)">
+      <circle cx="0" cy="0" r="26" fill="url(#nucleusGrad)"/>
+    </g>
+    <circle cx="0" cy="0" r="18" fill="none" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1.5"/>
+  </g>
+
+  <!-- Wordmark "Nexus AI" -->
+  <text x="245" y="130"
+        font-family="'Inter','Segoe UI',Arial,Helvetica,sans-serif"
+        font-size="72" font-weight="900"
+        fill="url(#textGrad)"
+        letter-spacing="-2">Nexus AI</text>
+
+  <!-- Tagline -->
+  <text x="250" y="172"
+        font-family="'Inter','Segoe UI',Arial,Helvetica,sans-serif"
+        font-size="15" font-weight="500"
+        fill="#b8b2d6"
+        letter-spacing="3">YOUR INTELLIGENT ASSISTANT</text>
+
+  <!-- Accent dot -->
+  <circle cx="510" cy="122" r="6" fill="#C77DFF" opacity="0.95"/>
+</svg>
+"""
+
+ICON_SVG = """
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="nucleusGrad2" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#c9b8ff"/>
+      <stop offset="45%" stop-color="#8b5cf6"/>
+      <stop offset="80%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#2b1256"/>
+    </radialGradient>
+    <filter id="glow2" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="200" height="200" rx="44" fill="#0b0715"/>
+
+  <g transform="translate(100, 100)">
+    <!-- Orbits -->
+    <ellipse cx="0" cy="0" rx="62" ry="24"
+             fill="none" stroke="#8b5cf6" stroke-width="3"
+             stroke-opacity="0.55"
+             transform="rotate(45)"/>
+    <ellipse cx="0" cy="0" rx="62" ry="24"
+             fill="none" stroke="#a78bff" stroke-width="3"
+             stroke-opacity="0.55"
+             transform="rotate(-45)"/>
+    <ellipse cx="0" cy="0" rx="62" ry="24"
+             fill="none" stroke="#C77DFF" stroke-width="3"
+             stroke-opacity="0.5"/>
+
+    <!-- Electrons -->
+    <circle cx="43" cy="43" r="5" fill="#E0C3FF" filter="url(#softGlow2)"/>
+    <circle cx="43" cy="-43" r="5" fill="#E0C3FF" filter="url(#softGlow2)"/>
+    <circle cx="62" cy="0" r="5" fill="#E0C3FF" filter="url(#softGlow2)"/>
+
+    <!-- Nucleus -->
+    <g filter="url(#glow2)">
+      <circle cx="0" cy="0" r="28" fill="url(#nucleusGrad2)"/>
+    </g>
+    <circle cx="0" cy="0" r="20" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+  </g>
+</svg>
+"""
+
+
+def svg_to_data_uri(svg_string: str) -> str:
+    encoded = base64.b64encode(svg_string.strip().encode("utf-8")).decode("utf-8")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+LOGO_DATA_URI = svg_to_data_uri(LOGO_SVG)
+ICON_DATA_URI = svg_to_data_uri(ICON_SVG)
 
 # ============================================================
 # CURRENT DATE
@@ -38,13 +190,50 @@ st.markdown("""
     footer {visibility: hidden;}
     header[data-testid="stHeader"] {background: transparent;}
 
-    .main-title {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    /* Header logo */
+    .nexus-header {
+        display: flex;
+        justify-content: center;
+        padding: 1.2rem 0 0.6rem 0;
+    }
+    .nexus-header img {
+        width: 100%;
+        max-width: 460px;
+        height: auto;
+        filter: drop-shadow(0 20px 50px rgba(139, 92, 246, 0.35));
+    }
+
+    /* Sidebar brand logo */
+    .side-logo {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 1rem;
+    }
+    .side-logo img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+    }
+    .side-logo-text {
+        font-size: 1.1rem;
+        font-weight: 800;
+        letter-spacing: -0.4px;
+        background: linear-gradient(90deg, #8A6BFF, #C77DFF, #6BD6FF);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 3rem; font-weight: 800; text-align: center;
-        padding: 1rem 0 0.5rem 0; margin-bottom: 0;
+        line-height: 1.1;
     }
+    .side-logo-sub {
+        font-size: 0.62rem;
+        color: #8b84b5;
+        letter-spacing: 0.6px;
+        margin-top: 1px;
+    }
+
     .subtitle { text-align: center; color: #a0a0b0; font-size: 1rem; margin-bottom: 2rem; }
 
     div[data-testid="stChatMessage"] {
@@ -178,7 +367,6 @@ HISTORY_FILE = Path("chat_history.json")
 cerebras_client = Cerebras(api_key=CEREBRAS_API_KEY) if CEREBRAS_API_KEY else None
 
 
-# ---------- CEREBRAS ----------
 def _chat_cerebras(messages, max_tokens, temperature):
     response = cerebras_client.chat.completions.create(
         model="llama3.1-8b",
@@ -189,7 +377,6 @@ def _chat_cerebras(messages, max_tokens, temperature):
     return response.choices[0].message.content
 
 
-# ---------- CLOUDFLARE WORKERS AI ----------
 def _chat_cloudflare(messages, max_tokens, temperature):
     if not CLOUDFLARE_API_KEY or not CLOUDFLARE_ACCOUNT_ID:
         raise Exception("Cloudflare not configured")
@@ -216,7 +403,6 @@ def _chat_cloudflare(messages, max_tokens, temperature):
     return data["result"]["response"]
 
 
-# ---------- OPENROUTER ----------
 def _chat_openrouter(messages, max_tokens, temperature):
     resp = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -237,7 +423,6 @@ def _chat_openrouter(messages, max_tokens, temperature):
 
 
 def chat_with_fallback(messages, max_tokens=1000, temperature=0.3):
-    """Try each provider in order until one succeeds."""
     providers = []
     if cerebras_client:
         providers.append(("Cerebras", _chat_cerebras))
@@ -357,8 +542,19 @@ def find_relevant_context(question):
 # ============================================================
 
 with st.sidebar:
-    st.markdown("## 💬 Conversations")
-    st.markdown("---")
+    # Brand with logo
+    st.markdown(
+        f"""
+        <div class="side-logo">
+            <img src="{ICON_DATA_URI}" alt="Nexus AI" />
+            <div>
+                <div class="side-logo-text">Nexus AI</div>
+                <div class="side-logo-sub">INTELLIGENT ASSISTANT</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     if st.button("➕  New Chat", use_container_width=True):
         create_new_chat()
@@ -387,7 +583,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Active providers
     active = []
     if CEREBRAS_API_KEY: active.append("Cerebras")
     if CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID: active.append("Cloudflare")
@@ -401,7 +596,16 @@ with st.sidebar:
 current_chat = st.session_state.current_chat
 messages = st.session_state.chats[current_chat]
 
-st.markdown('<h1 class="main-title">✨ Nexus AI</h1>', unsafe_allow_html=True)
+# Big atom logo header
+st.markdown(
+    f"""
+    <div class="nexus-header">
+        <img src="{LOGO_DATA_URI}" alt="Nexus AI logo" />
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.markdown(
     '<p class="subtitle">Your intelligent assistant · Ask anything</p>',
     unsafe_allow_html=True
@@ -515,8 +719,11 @@ If document info is provided below, use it. Do not invent facts from documents."
 
 st.markdown("---")
 st.markdown(
-    '<p style="text-align:center; color:#667eea; font-size:0.85rem;">'
-    '✨ Nexus AI · Multi-provider fallback'
-    '</p>',
+    f"""
+    <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem; padding: 0.5rem 0;">
+        <img src="{ICON_DATA_URI}" style="width:18px; height:18px; border-radius:5px; opacity:0.85;" />
+        <span style="color:#667eea; font-size:0.85rem;">Nexus AI · Your intelligent assistant</span>
+    </div>
+    """,
     unsafe_allow_html=True
 )
